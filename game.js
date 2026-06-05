@@ -158,6 +158,13 @@ function scheduleResize() {
   setTimeout(resize, 120);
   setTimeout(resize, 320);
 }
+// iOSのソフトキーボード収納はアニメーションで遅れるため、収納後に複数回resizeしてcanvasサイズを確実に復帰させる
+function scheduleResizeAfterKeyboard() {
+  scheduleResize();
+  setTimeout(scheduleResize, 500);
+  setTimeout(scheduleResize, 900);
+  setTimeout(scheduleResize, 1400);
+}
 window.addEventListener('resize', scheduleResize);
 window.addEventListener('orientationchange', scheduleResize);
 if (window.visualViewport) {
@@ -1386,6 +1393,7 @@ function openRanking(from) {
   game.elapsed = 0;
   rankScroll = 0; rankDragging = false; // 先頭から表示
   fetchTopScores();
+  scheduleResizeAfterKeyboard(); // 登録POST後の遷移でもキーボード由来の縮小を保険で復帰
 }
 
 // 未設定時にレイアウトをプレビューできるサンプル（実データではない）。100位までのスクロール確認用に100件。
@@ -1458,7 +1466,11 @@ function openNameEntry() {
   nameModal.hidden = false;
   setTimeout(() => { try { nameInput.focus(); nameInput.select(); } catch (_) {} }, 30);
 }
-function closeNameEntry() { if (nameModal) nameModal.hidden = true; }
+function closeNameEntry() {
+  if (nameInput) { try { nameInput.blur(); } catch (_) {} } // キーボードを確実に閉じる
+  if (nameModal) nameModal.hidden = true;
+  scheduleResizeAfterKeyboard(); // iOS: キーボード収納後にcanvasが縮んだままになるのを復帰
+}
 function confirmNameEntry() {
   if (!nameInput) return;
   const v = (nameInput.value || '').trim().replace(/\s+/g, ' ').slice(0, 12);
