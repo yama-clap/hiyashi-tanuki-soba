@@ -144,11 +144,19 @@ function resize() {
   const cssW = Math.max(1, Math.floor(W * scale));
   const cssH = Math.max(1, Math.round(cssW * H / W));
   const dpr = window.devicePixelRatio || 1;
-  view.style.width = cssW + 'px';
-  view.style.height = cssH + 'px';
-  view.width = Math.round(cssW * dpr);   // 実バッファは ×dpr
-  view.height = Math.round(cssH * dpr);
-  vctx.imageSmoothingEnabled = false;
+  const nextW = Math.round(cssW * dpr);   // 実バッファは ×dpr
+  const nextH = Math.round(cssH * dpr);
+  // CSS表示サイズは変わった時だけ更新
+  if (view.style.width !== cssW + 'px') view.style.width = cssW + 'px';
+  if (view.style.height !== cssH + 'px') view.style.height = cssH + 'px';
+  // 実バッファは実寸が変わった時だけ再代入する。毎回代入するとcanvasがクリアされ、
+  // resize連打（キーボード復帰用の遅延resize等）でiOSが2〜3回点滅するため冪等化。
+  if (view.width !== nextW || view.height !== nextH) {
+    view.width = nextW;
+    view.height = nextH;
+    vctx.imageSmoothingEnabled = false;
+    try { present(); } catch (_) {} // クリア直後の黒フレームを直近bufで即埋める
+  }
 }
 
 // iOS Safari は回転直後に visualViewport の値が遅れて確定することがあるため、複数タイミングで再適用
@@ -1393,7 +1401,7 @@ function openRanking(from) {
   game.elapsed = 0;
   rankScroll = 0; rankDragging = false; // 先頭から表示
   fetchTopScores();
-  scheduleResizeAfterKeyboard(); // 登録POST後の遷移でもキーボード由来の縮小を保険で復帰
+  scheduleResize(); // 軽い保険のみ。キーボード収納後の複数回resizeは closeNameEntry に集約（連打で点滅させない）
 }
 
 // 未設定時にレイアウトをプレビューできるサンプル（実データではない）。100位までのスクロール確認用に100件。
