@@ -92,6 +92,11 @@ const ri = Math.round;
 function lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 
+// GTM/GA4 計測：dataLayer にイベントを安全に push（GTM未読込でも壊さない）
+function track(event, params) {
+  try { (window.dataLayer = window.dataLayer || []).push(Object.assign({ event: event }, params || {})); } catch (_) {}
+}
+
 const IN_FLASH_DUR = 0.25;   // 受け口の成功フラッシュの初期寿命（onIn と drawInFlash で共有）
 const TOAST_LIFE = 0.9;      // 浮遊テキスト（トースト）の寿命
 // 受け口ライン（イン判定の高さ）。丼の縮小に追従。当たり判定と描画で同一式を共有する。
@@ -432,6 +437,7 @@ function setAim() {
 }
 
 function startGame(autoStarted) {
+  track('game_start', { auto: !!autoStarted }); // GA4: プレイ開始（auto=?play自動開始）
   game.state = STATE.PLAY;
   game.timeLeft = CONFIG.GAME_TIME;
   game.lastSec = CONFIG.GAME_TIME;
@@ -638,6 +644,16 @@ function endGame() {
   game.ranking = { phase: 'idle', rows: [], error: '' };
   game.submit = { phase: 'idle', error: '' };
   rankPreview = null; // 未設定プレビューも今回の結果でリセット
+
+  // GA4: タイムアップ（スコア=提供数, 内訳, 最高コンボ, 職人ランク, 自己ベスト更新）
+  track('game_over', {
+    score: z,
+    completed: game.bowls,
+    bonus: game.bonusBowls,
+    max_combo: game.maxCombo,
+    rank: rankFor(z),
+    new_record: game.newRecord,
+  });
 }
 
 function updateEffects(dt) {
@@ -1413,6 +1429,7 @@ function submitScore(name) {
     return;
   }
   game.submit = { phase: 'sending', error: '' };
+  track('ranking_register', { score: game.lastScore | 0, combo: game.maxCombo | 0 }); // GA4: ランキング登録（送信時。名前はPIIのため送らない）
   const body = JSON.stringify({ name: name, score: game.lastScore | 0, combo: game.maxCombo | 0 });
   fetch(rankBase(), { method: 'POST', headers: rankHeaders({ Prefer: 'return=representation' }), body })
     .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
