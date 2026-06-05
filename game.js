@@ -118,7 +118,12 @@ buf.width = W;
 buf.height = H;
 const g = buf.getContext('2d');
 
+// 名前入力モーダル表示中は背景canvasのresizeを凍結する（iOSのソフトキーボードで縮んだ
+// visualViewport をゲームcanvasに反映させないため。登録時の一瞬の縮みを防ぐ）
+let freezeCanvasResize = false;
+
 function resize() {
+  if (freezeCanvasResize) return; // モーダル(=キーボード)表示中は背景を縮めない
   // モバイルのURLバー等を除いた『実際に見えている領域』(visualViewport)に #stage を合わせる。
   // これをしないと Canvas がブラウザUIの裏へはみ出し、上下（HUD・手元）が見切れる。
   const vv = window.visualViewport;
@@ -1471,13 +1476,15 @@ const nameInput = document.getElementById('nameInput');
 function openNameEntry() {
   if (!nameModal || !nameInput) { submitScore('ゲスト'); return; } // 念のためのフォールバック
   nameInput.value = lsGet(RANKING_NAME_KEY) || '';
+  freezeCanvasResize = true; // キーボード表示で背景canvasが一瞬縮むのを防ぐ
   nameModal.hidden = false;
   setTimeout(() => { try { nameInput.focus(); nameInput.select(); } catch (_) {} }, 30);
 }
 function closeNameEntry() {
   if (nameInput) { try { nameInput.blur(); } catch (_) {} } // キーボードを確実に閉じる
   if (nameModal) nameModal.hidden = true;
-  scheduleResizeAfterKeyboard(); // iOS: キーボード収納後にcanvasが縮んだままになるのを復帰
+  // キーボード収納アニメ中の小さい visualViewport を拾わないよう、少し待ってから凍結解除＋復帰resize
+  setTimeout(function () { freezeCanvasResize = false; scheduleResizeAfterKeyboard(); }, 350);
 }
 function confirmNameEntry() {
   if (!nameInput) return;
