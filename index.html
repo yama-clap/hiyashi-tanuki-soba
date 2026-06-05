@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0a14">
+  <title>一分の冷やしたぬき</title>
+  <meta name="description" content="冷やしたぬきタイムアタック。60秒で何杯出せるか競う爽快フリック盛り付けゲーム。">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="一分の冷やしたぬき">
+  <meta property="og:description" content="冷やしたぬきタイムアタック。60秒で何杯出せるか競う爽快フリック盛り付けゲーム。">
+  <meta property="og:image" content="assets/ogp.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="一分の冷やしたぬき">
+  <meta name="twitter:description" content="冷やしたぬきタイムアタック。60秒で何杯出せるか競う爽快フリック盛り付けゲーム。">
+  <meta name="twitter:image" content="assets/ogp.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage">
+    <!-- 表示用canvas。実サイズ(×dpr)とCSSサイズは game.js が設定する。
+         描画は 180×320 のオフスクリーンに行い、ここへ nearest-neighbor で一括拡大する -->
+    <canvas id="view"></canvas>
+  </div>
+
+  <!-- ランキング登録の名前入力（canvasの上に重ねるモーダル。スマホのキーボードが出る） -->
+  <div id="nameModal" hidden>
+    <div class="name-box">
+      <p class="name-title">ランキングに登録</p>
+      <input id="nameInput" type="text" maxlength="12" placeholder="なまえ" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="name-actions">
+        <button id="nameCancel" type="button">やめる</button>
+        <button id="nameOk" type="button">登録する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ランキング設定 → ゲーム本体。非モジュール。 -->
+  <script src="config.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
