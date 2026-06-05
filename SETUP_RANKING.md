@@ -59,23 +59,24 @@ revoke update, delete, truncate on public.scores from anon, authenticated;
 > `score between 0 and 100` の上限は調整可。極端な値（9999等）の登録を弾くための上限です。
 
 ## 3. 接続情報を config.js に書く
-左メニュー **Project Settings → API** を開き、
-- **Project URL**（例 `https://abcdefgh.supabase.co`）
-- **Project API keys → `anon` `public`** のキー（`eyJ...` で始まる長い文字列）
+新しいSupabaseのキー画面に合わせた手順：
+- **Project URL**：左メニュー **Settings → Data API**（または General）→ `https://◯◯◯.supabase.co`
+- **Publishable key**：左メニュー **Settings → API Keys** → **Publishable key**（`sb_publishable_…` で始まる。ブラウザ公開OK＝旧「anon public」に相当）
 
 を控え、リポジトリの `config.js` を編集：
 
 ```js
 window.RANKING = {
-  url: 'https://abcdefgh.supabase.co',   // ← あなたの Project URL
-  anonKey: 'eyJhbGciOiJIUzI1NiI...',     // ← anon public キー
+  url: 'https://abcdefgh.supabase.co',        // ← あなたの Project URL
+  anonKey: 'sb_publishable_xxxxxxxxxxxx...',   // ← Publishable key（公開OK）
   table: 'scores',
   topN: 100,
 };
 ```
 
-> ⚠️ `anon public` キーは **公開して問題ない**キーです（RLS が守ります）。
-> **`service_role` キーは絶対に config.js に書かない／公開しない**でください。
+> ⚠️ `Publishable key`（`sb_publishable_…`）は **公開して問題ない**キーです（RLS が守ります）。
+> **Secret key（`sb_secret_…` / `service_role`）は絶対に config.js に書かない／公開しない**でください。
+> （※ 旧UIでは「anon public」「service_role」という名称でした）
 
 ## 4. 静的ホスティングに公開（GitHub Pages 例）
 オンラインランキングは `https` 配信で使うのが安全です（`file://` 直開きは API 呼び出しで失敗しやすい）。
