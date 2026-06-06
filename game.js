@@ -73,6 +73,7 @@ const CONFIG = {
   TANUKI_SHARE: 0.28,        // お面が出たとき狸である割合（狸はさらにレア）
   MASK_MIN_POURED: 1,        // この数だけ盛ってから出現可（最初の一手では出さない）
   MASK_ONCE_PER_BOWL: true,  // 1杯につきお面は最大1回
+  MASK_HINT_TIMES: 3,        // 各お面の最初のN回だけ「大きめ初回ヒント」を出す（localStorage記憶・ゲームをまたぐ）
 };
 
 // 盛り付け順: そば→つゆ→ねぎ→わさび→あげ→天かす（成功ごとに bowl_1..5 → bowl_done と段送り）
@@ -95,6 +96,8 @@ const MASKS = {
 const HISCORE_KEY = 'hiyashi_tanuki_hiscore';
 const MUTED_KEY = 'hiyashi_tanuki_muted';
 const RANKING_NAME_KEY = 'hiyashi_tanuki_name';
+const FOX_SEEN_KEY = 'hiyashi_tanuki_foxseen';     // 狐お面を見た回数（初回ヒント用・永続）
+const TANUKI_SEEN_KEY = 'hiyashi_tanuki_tanseen';  // たぬきお面を見た回数（初回ヒント用・永続）
 
 /* =====================================================================
    ユーティリティ
@@ -105,6 +108,10 @@ const ri = Math.round;
 // localStorage は環境により例外を投げる（Safariプライベート等）。失敗してもゲームは動かす。
 function lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+// お面を見た回数（プレイヤーごと・ゲームをまたいで永続）。最初のN回だけ大きめ初回ヒントを出すのに使う。
+function maskSeenKey(kind) { return kind === 'fox' ? FOX_SEEN_KEY : TANUKI_SEEN_KEY; }
+function maskSeenCount(kind) { return parseInt(lsGet(maskSeenKey(kind)) || '0', 10) || 0; }
+function bumpMaskSeen(kind) { lsSet(maskSeenKey(kind), String(maskSeenCount(kind) + 1)); }
 
 // GTM/GA4 計測：dataLayer にイベントを安全に push（GTM未読込でも壊さない）
 function track(event, params) {
@@ -564,6 +571,8 @@ function spawnParticles(x, y, color, n) {
   }
 }
 function addToast(text, x, y, color, combo, finish) { game.toasts.push({ text, x, y, life: finish ? 1.1 : TOAST_LIFE, max: finish ? 1.1 : TOAST_LIFE, color: color || '#ffd23f', combo: combo || 0, finish: !!finish }); }
+// 初回オンボーディング用の「少し大きめ・少し長め・色指定可」トースト（hintフラグでdrawHintToastへ）
+function addBigHint(text, x, y, color) { game.toasts.push({ text, x, y, life: 1.6, max: 1.6, color: color || '#ffd23f', combo: 0, finish: false, hint: true }); }
 
 function onIn() {
   if (game.maskItem) {
@@ -656,13 +665,17 @@ function maybeSpawnMask() {
   return true;
 }
 function onMaskSpawn(kind) {
+  const firstTimes = maskSeenCount(kind) < CONFIG.MASK_HINT_TIMES; // 各お面の最初のN回は大きめ初回ヒント
   if (kind === 'fox') {
-    addToast('きつね！よけて！', W / 2, 178, '#ff5a3a');
+    if (firstTimes) addBigHint('きつねは よけて！', W / 2, 132, '#ff5a3a');
+    else addToast('きつね！よけて！', W / 2, 178, '#ff5a3a');
     Sound.ensure(); Sound.sweep(560, 170, 0.22, 'sawtooth', 0.16); // 不穏な下降音
   } else {
-    addToast('たぬき！入れて！', W / 2, 178, '#ffd23f');
+    if (firstTimes) addBigHint('たぬきは 入れて！', W / 2, 132, '#ffd23f');
+    else addToast('たぬき！入れて！', W / 2, 178, '#ffd23f');
     Sound.sfxSparkle(); // キラリーン（当たり予感）
   }
+  bumpMaskSeen(kind); // この種類を見た回数を永続加算（次回以降の判定に使う）
 }
 // 狐を丼に入れてしまった → 盛り付けやり直し（この杯の進捗だけ全リセット。完成済みの杯は保持）。
 function onFoxInBowl() {
@@ -1094,7 +1107,8 @@ function drawToasts() {
   game.toasts.forEach((t) => {
     const k = clamp(t.life / t.max, 0, 1);
     g.globalAlpha = k;
-    if (t.finish) drawFinishToast(t, k);           // 完成（最大・金）
+    if (t.hint) drawHintToast(t, k);               // 初回オンボーディング（大きめ・色指定）
+    else if (t.finish) drawFinishToast(t, k);      // 完成（最大・金）
     else if (t.combo >= 1) drawPopToast(t, k);      // ナイス(1)＆コンボ(>=2)
     else drawText(t.text, t.x, t.y, 12, t.color, 'center', true); // ミス等
   });
@@ -1122,6 +1136,19 @@ function drawFinishToast(t, k) {
   g.translate(ri(t.x), ri(t.y)); g.scale(sc, sc);
   drawOutlinedText(t.text, size, '#ffd23f', '#7a2e06', 3);
   g.fillStyle = 'rgba(255,255,255,0.65)'; g.fillText(t.text, 0, -1.4); // 上側に白ツヤ
+  g.restore();
+}
+
+// 初回オンボーディング用ヒント：通常(12px)より大きい20px・色指定可・軽いポップ・縁取りで可読。
+function drawHintToast(t, k) {
+  const age = 1 - k;
+  const pop = 1 + 0.35 * Math.max(0, 1 - age / 0.25); // finishより控えめなポップ
+  const size = 20; // 12px(通常)＜20＜26px(完成)＝「少し大きめ」
+  g.font = '700 ' + size + 'px ' + FONT_UI; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const sc = Math.min(pop, 170 / Math.max(1, g.measureText(t.text).width));
+  g.save();
+  g.translate(ri(t.x), ri(t.y)); g.scale(sc, sc);
+  drawOutlinedText(t.text, size, t.color, '#201208', 3);
   g.restore();
 }
 
