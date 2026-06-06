@@ -66,6 +66,13 @@ const CONFIG = {
   FOOD_SIZE: 64,
   WASABI_SIZE: 48,
   FLY_MIN_SCALE: 0.5,        // 飛行中、丼に近づくほど縮小（奥行き感）。1=縮小なし
+
+  // 狐／たぬきのお面（レア・読み合いアイテム）。狐=よけろ／たぬき=入れろ。
+  MASK_ENABLED: true,        // 機能の総オンオフ（緊急停止/AB用）
+  MASK_CHANCE: 0.10,         // 次の手がお面になる確率（保守的・レア）
+  TANUKI_SHARE: 0.28,        // お面が出たとき狸である割合（狸はさらにレア）
+  MASK_MIN_POURED: 1,        // この数だけ盛ってから出現可（最初の一手では出さない）
+  MASK_ONCE_PER_BOWL: true,  // 1杯につきお面は最大1回
 };
 
 // 盛り付け順: そば→つゆ→ねぎ→わさび→あげ→天かす（成功ごとに bowl_1..5 → bowl_done と段送り）
@@ -77,6 +84,13 @@ const INGREDIENTS = [
   { key: 'age',     name: 'あげ',   img: 'age.png',     color: '#e0a23e', edge: '#a66a18', size: CONFIG.FOOD_SIZE },
   { key: 'tenkasu', name: '天かす', img: 'tenkasu.png', color: '#f0d27a', edge: '#bb9433', size: CONFIG.FOOD_SIZE },
 ];
+
+// 狐＝悪(よけろ)／たぬき＝当たり(入れろ)。INGREDIENTS と同じ形＋ mask 種別。
+// ※ INGREDIENTS には入れない（6カウント完成ロジックに混ぜない）。手元へは game.maskItem で差し込む。
+const MASKS = {
+  fox:    { key: 'fox_mask',    name: '狐のお面',     img: 'kitsune_mask.png', color: '#e8e2d4', edge: '#c23b22', size: CONFIG.FOOD_SIZE, mask: 'fox' },
+  tanuki: { key: 'tanuki_mask', name: 'たぬきのお面', img: 'tanuki_mask.png',  color: '#b98a52', edge: '#4a3018', size: CONFIG.FOOD_SIZE, mask: 'tanuki' },
+};
 
 const HISCORE_KEY = 'hiyashi_tanuki_hiscore';
 const MUTED_KEY = 'hiyashi_tanuki_muted';
@@ -222,6 +236,8 @@ loadImage('bowl_done.png');
 for (let i = 1; i <= 5; i++) loadImage('bowl_' + i + '.png'); // 段階画像（無ければフォールバック）
 loadImage('title_logo.png');
 INGREDIENTS.forEach((ing) => loadImage(ing.img));
+loadImage('kitsune_mask.png');
+loadImage('tanuki_mask.png');
 
 // ドットフォントの明示ロード。canvas の fillText は DOM と違いフォントロードを自動で
 // トリガーしないため、ここで読み込む。毎フレーム再描画なのでロード完了後は自動反映。
@@ -310,6 +326,20 @@ const Sound = {
     this.note(base * 1.5, t + 0.05, 0.12, 'square', 0.18);
   },
   sfxMiss() { this.ensure(); this.sweep(380, 90, 0.30, 'sawtooth', 0.16); },
+  // 不正解ブザー「ブブー」（低く濁った2連。狐を丼に入れた時用）
+  sfxBuzz() {
+    this.ensure(); if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    this.note(165, t, 0.13, 'sawtooth', 0.20); this.note(110, t, 0.13, 'square', 0.13);              // ブッ
+    this.note(150, t + 0.16, 0.32, 'sawtooth', 0.22); this.note(100, t + 0.16, 0.32, 'square', 0.14); // ブー（少し下げて長め）
+  },
+  // キラリーン（高音の上昇アルペジオ＋余韻。たぬき＝当たり予感の合図）
+  sfxSparkle() {
+    this.ensure(); if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    [1319, 1568, 1976, 2637].forEach((f, i) => this.note(f, t + i * 0.05, 0.16, 'triangle', 0.15)); // キラリー
+    this.note(3136, t + 0.24, 0.34, 'sine', 0.13);                                                   // ン（余韻のキラッ）
+  },
   // 弱すぎフリック（投げ不成立）の軽い合図
   sfxWeak() { this.ensure(); if (!this.ctx) return; this.note(200, this.ctx.currentTime, 0.07, 'sine', 0.10); },
   sfxComplete() { this.ensure(); if (!this.ctx) return; const t = this.ctx.currentTime; [523, 659, 784, 1047].forEach((f, i) => this.note(f, t + i * 0.08, 0.18, 'square', 0.22)); },
@@ -405,6 +435,8 @@ const game = {
   flash: 0,
   shake: 0,
   firstThrowDone: false,
+  maskItem: null,           // 手元がお面ならその定義(MASKS.fox/tanuki)、ふだんは null
+  maskUsedThisBowl: false,  // 1杯につきお面は最大1回
 
   // オンライン全国ランキング
   lastScore: 0,                 // 直近ゲームの得点（=totalBowls）。endGameで確定し送信に使う
@@ -422,7 +454,7 @@ const game = {
 /* =====================================================================
    ゲームロジック
    ===================================================================== */
-function currentIng() { return INGREDIENTS[game.ingIndex]; }
+function currentIng() { return game.maskItem || INGREDIENTS[game.ingIndex]; }
 
 function updateBowlDifficulty() {
   // 丼の見た目サイズ（杯数が進むほど縮む）
@@ -439,6 +471,8 @@ function updateBowlDifficulty() {
 function resetBowl() {
   game.ingIndex = 0;
   game.poured = 0;
+  game.maskItem = null;          // お面は新しい丼に持ち越さない
+  game.maskUsedThisBowl = false; // 杯ごとに1回までを更新
   updateBowlDifficulty();
   game.bowl.x = CONFIG.BOWL_X;
   game.bowl.y = CONFIG.BOWL_Y;
@@ -532,6 +566,10 @@ function spawnParticles(x, y, color, n) {
 function addToast(text, x, y, color, combo, finish) { game.toasts.push({ text, x, y, life: finish ? 1.1 : TOAST_LIFE, max: finish ? 1.1 : TOAST_LIFE, color: color || '#ffd23f', combo: combo || 0, finish: !!finish }); }
 
 function onIn() {
+  if (game.maskItem) {
+    if (game.maskItem.mask === 'fox') { onFoxInBowl(); return; }  // 狐を入れた＝ペナルティ
+    onTanukiInBowl(); return;                                     // たぬきを入れた＝大当たり
+  }
   const ing = currentIng();
   game.combo++;
   if (game.combo > game.maxCombo) game.maxCombo = game.combo;
@@ -577,11 +615,16 @@ function onIn() {
     } else {
       addToast('ナイス', game.bowl.x, game.bowl.y - 24, '#8ef0a0', 1);
     }
+    maybeSpawnMask(); // 次の手をお面に差し替えることがある（レア・ingIndexは温存）
     setAim();
   }
 }
 
 function onMiss(x, y, sideExit) {
+  if (game.maskItem) {
+    if (game.maskItem.mask === 'fox') { onFoxAvoided(x, y); return; }  // 狐をよけた＝成功
+    onTanukiMissed(x, y); return;                                      // たぬきを取り逃し＝無罰
+  }
   game.combo = 0;
   Sound.sfxMiss();
   spawnParticles(x, clamp(y, 0, H), currentIng().edge, 6);
@@ -590,6 +633,85 @@ function onMiss(x, y, sideExit) {
   const reason = (sideExit || reachedHeight) ? 'よこにズレた！' : 'とどかない！';
   addToast(reason, game.bowl.x, game.bowl.y - 6, '#ff9a6a');
   setAim(); // 同じ食材を投げ直し
+}
+
+/* ===== 狐／たぬきのお面（レア・読み合いアイテム） ===== */
+// 成功(onIn)の継続時にまれに手元をお面へ差し替える。ingIndex は据え置き（=本来の次具材を温存）。
+function maybeSpawnMask() {
+  if (!CONFIG.MASK_ENABLED) return false;
+  if (game.maskItem) return false;
+  if (CONFIG.MASK_ONCE_PER_BOWL && game.maskUsedThisBowl) return false;
+  if (!game.firstThrowDone) return false;
+  if (game.completing || game.phase === 'done') return false;
+  if (game.poured < CONFIG.MASK_MIN_POURED) return false;
+  if (Math.random() >= CONFIG.MASK_CHANCE) return false;
+  // 種別：狸はさらにレア。狐は「最後の一手」では出さない（完成直前の全やり直しは酷）。
+  let kind;
+  if (Math.random() < CONFIG.TANUKI_SHARE) kind = 'tanuki';
+  else kind = (game.poured >= INGREDIENTS.length - 1) ? null : 'fox';
+  if (!kind) return false;
+  game.maskItem = MASKS[kind];
+  game.maskUsedThisBowl = true;
+  onMaskSpawn(kind);
+  return true;
+}
+function onMaskSpawn(kind) {
+  if (kind === 'fox') {
+    addToast('きつね！よけて！', W / 2, 178, '#ff5a3a');
+    Sound.ensure(); Sound.sweep(560, 170, 0.22, 'sawtooth', 0.16); // 不穏な下降音
+  } else {
+    addToast('たぬき！入れて！', W / 2, 178, '#ffd23f');
+    Sound.sfxSparkle(); // キラリーン（当たり予感）
+  }
+}
+// 狐を丼に入れてしまった → 盛り付けやり直し（この杯の進捗だけ全リセット。完成済みの杯は保持）。
+function onFoxInBowl() {
+  game.maskItem = null;
+  game.poured = 0;
+  game.ingIndex = 0;
+  game.combo = 0;
+  game.driftPhase = 0;
+  game.bowl.x = CONFIG.BOWL_X;
+  // game.bowls / game.bonusBowls は触らない（既完成を保持）
+  Sound.sfxBuzz(); // ブブー（不正解ブザー）
+  game.flash = Math.max(game.flash, 0.5);
+  game.shake = Math.min(game.shake + 6, 9);
+  game.inFlash = 0;
+  spawnParticles(game.bowl.x, mouthAt(game.bowl), MASKS.fox.edge, 16);
+  addToast('しまった！盛り直し', game.bowl.x, game.bowl.y - 30, '#ff5a3a');
+  updateBowlDifficulty();
+  setAim();
+}
+// たぬきを丼に入れた → いっきに完成＋ボーナス1杯（既存の完成シーケンスを発火）。
+function onTanukiInBowl() {
+  game.maskItem = null;
+  game.bonusBowls++;            // ボーナス杯
+  game.bowls++;                 // その杯を即完成扱い（難易度も1杯ぶん進む）
+  game.flash = 1;
+  game.completing = true;
+  game.completeTimer = Math.max(0.18, CONFIG.COMPLETE_HOLD - Math.min(game.combo, 12) * 0.012);
+  game.phase = 'done';
+  game.shake = 6;
+  addToast('たぬき！大当たり', game.bowl.x, game.bowl.y - 42, '#ffd23f', 0, true);
+  addToast('完成＋ボーナス1杯！', game.bowl.x, game.bowl.y - 16, '#ffe9a8', 0);
+  Sound.sfxComplete();
+  spawnParticles(game.bowl.x, game.bowl.y, '#ffd23f', 34);
+  spawnParticles(game.bowl.x, game.bowl.y - 8, '#fff3b0', 16);
+  // 完成保持(completeTimer)後、updatePlay が resetBowl→setAim で次の杯へ
+}
+// 狐をよけられた → 成功（無罰・コンボ維持）。ingIndex 据え置き → 本来の次具材が再開。
+function onFoxAvoided(x, y) {
+  game.maskItem = null;
+  Sound.sfxWeak();
+  spawnParticles(clamp(x, 0, W), clamp(y, 0, H), '#9bf0a8', 8);
+  addToast('よけた！', game.bowl.x, game.bowl.y - 24, '#8ef0a0', 1);
+  setAim();
+}
+// たぬきを取り逃した → 無罰・コンボ維持（ボーナスを逃しただけ）。
+function onTanukiMissed(x, y) {
+  game.maskItem = null;
+  addToast('にがした！', clamp(x, 24, W - 24), clamp(y - 14, 30, H - 30), '#d8bd90');
+  setAim();
 }
 
 function updatePlay(dt) {
@@ -873,6 +995,15 @@ function drawIngredientShape(ing, cx, cy, size) {
   } else if (ing.key === 'tenkasu') {
     g.fillStyle = ing.color;
     for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.beginPath(); g.arc(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.5, r * 0.32, 0, Math.PI * 2); g.fill(); }
+  } else if (ing.mask) {
+    // お面のフォールバック（kitsune_mask.png/tanuki_mask.png 未ロード時）。丸面＋耳＋目で具材と区別。
+    g.fillStyle = ing.color; g.beginPath(); g.ellipse(cx, cy, r * 0.8, r * 0.92, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = ing.edge; // 耳（上の三角2つ）
+    g.beginPath(); g.moveTo(cx - r * 0.52, cy - r * 0.5); g.lineTo(cx - r * 0.18, cy - r * 0.95); g.lineTo(cx - r * 0.1, cy - r * 0.45); g.fill();
+    g.beginPath(); g.moveTo(cx + r * 0.52, cy - r * 0.5); g.lineTo(cx + r * 0.18, cy - r * 0.95); g.lineTo(cx + r * 0.1, cy - r * 0.45); g.fill();
+    g.beginPath(); g.ellipse(cx - r * 0.3, cy, r * 0.13, r * 0.2, 0, 0, Math.PI * 2); g.fill(); // 目
+    g.beginPath(); g.ellipse(cx + r * 0.3, cy, r * 0.13, r * 0.2, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = ing.edge; g.lineWidth = 2; g.beginPath(); g.ellipse(cx, cy, r * 0.8, r * 0.92, 0, 0, Math.PI * 2); g.stroke();
   } else {
     g.fillStyle = ing.color; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.arc(cx - r * 0.3, cy - r * 0.3, r * 0.32, 0, Math.PI * 2); g.fill();
@@ -942,7 +1073,11 @@ function drawTrajectory() {
   let x = game.food.x, y = game.food.y;
   let vx = dir.x * sp, vy = dir.y * sp;
   const dt = CONFIG.TRAJECTORY_DT;
-  g.save(); g.fillStyle = 'rgba(255,255,255,0.9)';
+  // 軌道色：狐=赤(入れるな)／たぬき=緑(狙え)／通常=白
+  g.save();
+  g.fillStyle = game.maskItem
+    ? (game.maskItem.mask === 'fox' ? 'rgba(255,70,50,0.95)' : 'rgba(130,235,150,0.95)')
+    : 'rgba(255,255,255,0.9)';
   for (let i = 0; i < CONFIG.TRAJECTORY_STEPS; i++) {
     vy += CONFIG.GRAVITY * dt; x += vx * dt; y += vy * dt;
     if (y > H || x < 0 || x > W) break;
@@ -1182,11 +1317,17 @@ function drawHUD() {
 
   // 現在の食材名（丼と手元の間）：最初は「盛り付けスタート」、最後の具は「最後は○○」
   if (!game.completing) {
-    const name = currentIng().name;
-    const label = game.poured === 0 ? '盛り付けスタート！'
-      : game.poured === INGREDIENTS.length - 1 ? '最後は ' + name + '！'
-      : 'つぎは ' + name + '！';
-    drawText(label, W / 2, 160, 11, '#ffd23f', 'center', true);
+    let label, lc = '#ffd23f';
+    if (game.maskItem) {
+      if (game.maskItem.mask === 'fox') { label = 'きつね！よけて！'; lc = '#ff5a3a'; }
+      else { label = '★ たぬき！入れて！'; }
+    } else {
+      const name = currentIng().name;
+      label = game.poured === 0 ? '盛り付けスタート！'
+        : game.poured === INGREDIENTS.length - 1 ? '最後は ' + name + '！'
+        : 'つぎは ' + name + '！';
+    }
+    drawText(label, W / 2, 160, 11, lc, 'center', true);
   }
 }
 
