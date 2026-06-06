@@ -37,7 +37,7 @@ create policy "anon read scores" on public.scores
 create policy "anon insert scores" on public.scores
   for insert to anon
   with check (
-    char_length(btrim(name)) between 1 and 12   -- 空白だけ/長すぎる名前を弾く
+    char_length(btrim(name)) between 1 and 6    -- 空白だけ/長すぎる名前を弾く（表示・入力とも6文字）
     and name !~ '[[:cntrl:]]'                    -- 改行・制御文字を禁止（表示崩れ/荒らし対策）
     and score between 0 and 100
     and combo between 0 and 300

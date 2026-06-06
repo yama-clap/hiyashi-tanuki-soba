@@ -1488,7 +1488,7 @@ function closeNameEntry() {
 }
 function confirmNameEntry() {
   if (!nameInput) return;
-  const v = (nameInput.value || '').trim().replace(/\s+/g, ' ').slice(0, 12);
+  const v = (nameInput.value || '').trim().replace(/\s+/g, ' ').slice(0, 6);
   if (!v) { try { nameInput.focus(); } catch (_) {} return; }
   lsSet(RANKING_NAME_KEY, v);
   closeNameEntry();

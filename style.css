@@ -103,6 +103,14 @@ html, body {
 
 #nameInput::placeholder { color: #9c8a66; }
 
+.name-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c9b483;
+  text-shadow: 1px 1px 0 #201208;
+}
+
 .name-actions {
   display: flex;
   gap: 10px;
