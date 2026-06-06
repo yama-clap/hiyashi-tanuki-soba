@@ -157,6 +157,65 @@ main {
 .combo b, .ranking-info b, .rank-info b { color: #ffe9a8; }
 .combo .hi, .ranking-info .hi, .rank-info .hi { color: #ffd23f; }
 
+/* ============ お面アイテム（読み合い）：たぬき=入れる(金) / きつね=よける(赤) ============ */
+.masks {
+  margin-top: 16px;
+  padding: 18px;
+  border: 2px solid rgba(255, 236, 180, 0.34);
+  border-radius: 8px;
+  background: rgba(33, 20, 12, 0.88);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+.masks > p {
+  margin: 8px 0 0;
+  color: #fff2c5;
+  font-size: 17px;
+  font-weight: 900;
+  text-shadow: 2px 2px 0 #201208;
+}
+.masks > p b { color: #ffe9a8; }
+.mask-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.mask-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border-radius: 8px;
+  text-align: center;
+}
+.mask-card.good { border: 2px solid rgba(224, 163, 54, 0.85); background: rgba(44, 28, 12, 0.92); }
+.mask-card.bad  { border: 2px solid rgba(255, 90, 58, 0.70);  background: rgba(40, 18, 14, 0.92); }
+.mask-img {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+}
+.mask-img img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.mask-card h3 { margin: 2px 0 0; font-size: 20px; }
+.mask-card h3.hi { color: #ffd23f; }
+.mask-card h3.warn { color: #ff7a5a; }
+.mask-card p {
+  margin: 0;
+  color: #fff2c5;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.45;
+  text-shadow: 2px 2px 0 #201208;
+}
+.mask-card .hi { color: #ffd23f; }
+.mask-card .warn { color: #ff7a5a; }
+
 /* 職人ランク一覧（提供数→称号）。2カラムでコンパクト、最上位は1行使って強調。 */
 .rank-list {
   display: grid;
