@@ -1487,7 +1487,7 @@ function drawResult() {
   const rr = registerRect();
   const sending = game.submit.phase === 'sending';
   let regLabel = 'ランキングに登録';
-  if (sending) regLabel = '送信中…';
+  if (sending) regLabel = '送信中';
   else if (game.submit.phase === 'done' || game.myEntryId) regLabel = 'ランキングを見る';
   else if (game.submit.phase === 'error') regLabel = '登録に失敗・再試行';
   const rrad = Math.min(5, rr.h / 2);
@@ -1659,7 +1659,7 @@ function drawRanking() {
   const rk = game.ranking;
   let rowsTopY = cardY + 46;
   if (rk.phase === 'loading') {
-    drawText('読み込み中…', W / 2, cardY + 120, 11, '#d8bd90', 'center', false);
+    drawText('読み込み中', W / 2, cardY + 120, 11, '#d8bd90', 'center', false);
   } else if (rk.phase === 'error') {
     drawText('読み込めませんでした', W / 2, cardY + 116, 11, '#ff9a6a', 'center', false);
     drawText('通信状態や設定を確認してください', W / 2, cardY + 134, 9, '#d8bd90', 'center', false);
