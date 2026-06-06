@@ -1537,7 +1537,7 @@ function drawRanking() {
     rankMaxScroll = maxScroll;                      // 入力側のclamp用に共有
     rankScroll = clamp(rankScroll, 0, maxScroll);   // 入力で動かした値をここで正規化
     const sc = rankScroll;
-    const nameMaxW = cardW - 92;             // 順位＋杯数＋スクロールバーぶんを除く
+    const nameMaxW = cardW - 82;             // 名前は全角6文字（12px×6=72px）まで表示。最大スコア「100杯」とも重ならない幅
     g.save();
     g.beginPath(); g.rect(cardX + 4, listTop, cardW - 8, viewH); g.clip();
     const first = Math.max(0, Math.floor(sc / rowH));
