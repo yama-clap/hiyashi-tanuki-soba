@@ -9,5 +9,5 @@ window.RANKING = {
   url: 'https://rxrvjvuuzngabpmqpghk.supabase.co',
   anonKey: 'sb_publishable_-PO8g7oCbK7fztNLcca37A_LRfP2OGl',
   table: 'scores',
-  topN: 100,   // 上位100位まで取得（ランキング画面はスクロールで全件見られる）
+  topN: 500,   // 上位500位まで取得（ランキング画面はスクロールで全件見られる）
 };
