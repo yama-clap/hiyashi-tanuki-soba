@@ -157,6 +157,27 @@ main {
 .combo b, .ranking-info b, .rank-info b { color: #ffe9a8; }
 .combo .hi, .ranking-info .hi, .rank-info .hi { color: #ffd23f; }
 
+/* ============ これはキツイ（高難度モード）：危険系なので赤枠で強調 ============ */
+.hard {
+  margin-top: 16px;
+  padding: 18px;
+  border: 2px solid rgba(255, 90, 58, 0.7);
+  border-radius: 8px;
+  background: rgba(40, 18, 14, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+.hard h2.warn { color: #ff7a5a; }
+.hard p { margin: 10px 0 0; color: #fff2c5; font-size: 15px; font-weight: 700; line-height: 1.55; text-shadow: 1px 1px 0 #201208; }
+.hard p b { color: #ffe9a8; }
+.hard p b.warn { color: #ff8a6a; }
+.hard p .hi { color: #ffd23f; }
+.hard ul { margin: 10px 0 0; padding-left: 1.2em; }
+.hard li { color: #fff2c5; font-size: 15px; font-weight: 700; line-height: 1.55; text-shadow: 1px 1px 0 #201208; }
+.hard li + li { margin-top: 6px; }
+.hard li b { color: #ffd0a0; }
+.hard .tease { color: #ffcaba; }
+.hard .caution { margin-top: 12px; font-size: 12px; font-weight: 700; color: #d8b9a8; line-height: 1.5; }
+
 /* ============ お面アイテム（読み合い）：たぬき=入れる(金) / きつね=よける(赤) ============ */
 .masks {
   margin-top: 16px;
