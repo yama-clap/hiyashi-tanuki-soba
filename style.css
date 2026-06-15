@@ -51,8 +51,9 @@ html, body {
   box-shadow: 0 0 0 2px #000, 0 0 20px rgba(0, 0, 0, 0.6);
 }
 
-/* ============ ランキング登録：名前入力モーダル（canvasの上に重ねる） ============ */
-#nameModal {
+/* ============ モーダル（名前入力／ドッキリ確認。canvasの上に重ねる・共通体裁） ============ */
+#nameModal,
+#scareModal {
   position: fixed;
   inset: 0;
   z-index: 10;
@@ -64,7 +65,8 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-#nameModal[hidden] { display: none; }
+#nameModal[hidden],
+#scareModal[hidden] { display: none; }
 
 .name-box {
   width: min(300px, 90%);
@@ -127,7 +129,9 @@ html, body {
   cursor: pointer;
 }
 
-#nameOk {
+/* 登録「登録する」と ドッキリ「はい・出す」＝金の主ボタン */
+#nameOk,
+#scareYes {
   border: 2px solid #fff8df;
   background: linear-gradient(#ffe28e, #e3aa40);
   color: #2a1804;
@@ -135,10 +139,21 @@ html, body {
   text-shadow: 1px 1px 0 rgba(255, 248, 223, 0.6);
 }
 
-#nameCancel {
+/* 登録「やめる」と ドッキリ「いいえ・出さない」＝暗色の副ボタン */
+#nameCancel,
+#scareNo {
   border: 2px solid #e0a336;
   background: rgba(28, 18, 10, 0.82);
   color: #ffe9a8;
   text-shadow: 1px 1px 0 #201208;
+}
+
+/* ドッキリ確認モーダルのサブ文言（出す/出さない）。ボタン色は登録モーダルと共通配色。 */
+.btn-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-top: 1px;
 }
 

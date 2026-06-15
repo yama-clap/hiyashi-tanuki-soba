@@ -61,6 +61,7 @@ const CONFIG = {
   DRIFT_SPEED_BASE: 1.0,
   DRIFT_SPEED_PER_BOWL: 0.06,   // 速度の増分も控えめに（壁を緩和）
   DRIFT_SPEED_MAX: 2.4,      // 上げすぎると着弾までに丼が逃げて理不尽になるため上限を抑える
+  DRIFT_BIAS_MAX: 0,         // 丼ごとに揺れの中心を±この量だけ左右へ寄せる（0=常に中央。HARDで難化）
 
   // 食材サイズ（元ピクセル等倍）
   FOOD_SIZE: 64,
@@ -74,7 +75,33 @@ const CONFIG = {
   MASK_MIN_POURED: 1,        // この数だけ盛ってから出現可（最初の一手では出さない）
   MASK_ONCE_PER_BOWL: true,  // 1杯につきお面は最大1回
   MASK_HINT_TIMES: 3,        // 各お面の最初のN回だけ「大きめ初回ヒント」を出す（localStorage記憶・ゲームをまたぐ）
+
+  // 「これはキツイ」モード（高難度＋ドッキリ＝ジャンプスケア）
+  HARD_ENABLED: true,        // モードの総オンオフ
+  SCARE_AT_TIMELEFT: 30,     // 残り何秒で必ずドッキリ発火（固定タイミング・1ゲーム1回）
+  SCARE_DURATION: 2.0,       // フォールバック表示秒数（通常はmp3の長さ=2秒に同期＝Sound.scareDur）
+  SCARE_PREP_LEAD: 1.0,      // ヒット何秒前から「タメ」（前兆）を始めるか
+  SCARE_AFTER: 0.6,          // 消えた後の余韻（残像＋ビネット）秒数
+  ENDING_TIME: 1.2,          // 時間切れ→結果発表の前に「タイムアップ！」を見せる余韻秒数
 };
+
+// 難易度プリセット。normal=現行の基準値、hard=「これはキツイ」の上書き。
+// startGame 冒頭で applyDifficulty(hard) が CONFIG を毎回上書き＝決定的（ノーマルで基準値に復元）。
+const DIFFICULTY = {
+  // normal=現行の基準値。hard=「これはキツイ」。60秒・重力・受け口比率は通常と同じにし、
+  // 難しさは「弱フリックは手前に落ちる(LAUNCH_MIN↓＝床を下げて勢い不足だと丼まで届かない)」
+  // 「丼が杯ごとにどんどん小さく(縮小↑/下限↓)」「丼が最初から動く(DRIFT_START 0)」
+  // 「狐が少し多い(MASK_CHANCE↑/TANUKI_SHARE↓)」で出す。
+  normal: { GAME_TIME: 60, GRAVITY: 2200, CATCH_RATIO: 0.74, LAUNCH_MIN: 1000, MIN_FLICK_SPEED: 130,
+            BOWL_SHRINK_PER_BOWL: 0.04, BOWL_SCALE_MIN: 0.55,
+            DRIFT_START_BOWL: 2, DRIFT_AMP_PER_BOWL: 4, DRIFT_SPEED_PER_BOWL: 0.06, DRIFT_BIAS_MAX: 0,
+            MASK_CHANCE: 0.10, TANUKI_SHARE: 0.28 },
+  hard:   { GAME_TIME: 60, GRAVITY: 2200, CATCH_RATIO: 0.74, LAUNCH_MIN: 950, MIN_FLICK_SPEED: 130,
+            BOWL_SHRINK_PER_BOWL: 0.06, BOWL_SCALE_MIN: 0.40,
+            DRIFT_START_BOWL: 0, DRIFT_AMP_PER_BOWL: 6, DRIFT_SPEED_PER_BOWL: 0.10, DRIFT_BIAS_MAX: 20,
+            MASK_CHANCE: 0.12, TANUKI_SHARE: 0.24 }, // 狐を若干増やす＋丼の揺れを左右に寄せる（DRIFT_BIAS_MAX）
+};
+function applyDifficulty(hard) { Object.assign(CONFIG, hard ? DIFFICULTY.hard : DIFFICULTY.normal); }
 
 // 盛り付け順: そば→つゆ→ねぎ→わさび→あげ→天かす（成功ごとに bowl_1..5 → bowl_done と段送り）
 const INGREDIENTS = [
@@ -227,11 +254,12 @@ function toLogical(clientX, clientY) {
    画像アセット（/assets から。未配置なら仮グラフィック）
    ===================================================================== */
 const ASSETS = {};
-function loadImage(name) {
+const ASSET_VER = '20260609a'; // 差し替えの多いscare系のキャッシュ対策バージョン（更新時にここを変える。mp3=バイオリン恐怖音に差替）
+function loadImage(name, ver) {
   const e = { img: new Image(), ready: false };
   e.img.onload = () => { e.ready = true; };
   e.img.onerror = () => { e.ready = false; };
-  e.img.src = 'assets/' + name;
+  e.img.src = 'assets/' + name + (ver ? '?v=' + ver : ''); // verはキャッシュバスター。ASSETSのキーはnameのまま（asset('scare.png')で引ける）。
   ASSETS[name] = e;
   return e;
 }
@@ -245,6 +273,7 @@ loadImage('title_logo.png');
 INGREDIENTS.forEach((ing) => loadImage(ing.img));
 loadImage('kitsune_mask.png');
 loadImage('tanuki_mask.png');
+loadImage('scare.png', ASSET_VER); // 「これはキツイ」モードのドッキリ画像（codex作成。?v=でキャッシュ対策）
 
 // ドットフォントの明示ロード。canvas の fillText は DOM と違いフォントロードを自動で
 // トリガーしないため、ここで読み込む。毎フレーム再描画なのでロード完了後は自動反映。
@@ -263,11 +292,51 @@ function drawSprite(name, cx, cy, w, h, fallback) {
   }
 }
 
+// 「これはキツイ」ドッキリ：全画面に即・不透明で表示（フェードインしない＝びっくり優先）。
+// shake変位で端が欠けないよう少し大きめに描画。codex画像が未着なら仮グリッチで代替。
+function drawScare() {
+  const e = game.scareElapsed;
+  if (e < 0.10) { g.fillStyle = '#000'; g.fillRect(0, 0, W, H); return; } // B 直前の黒落ち(約100ms)
+  const s = e < 0.30 ? 1.25 - 0.25 * ((e - 0.10) / 0.20) : 1.0;           // 1.25→1.0 を0.2sでスナップ（飛びかかる）
+  const jx = rand(-6, 6), jy = rand(-6, 6); // 毎フレーム揺らして絵を振動
+  const a = asset('scare.png');
+  const bw = (W + 24) * s, bh = (H + 24) * s; // 中心基準で拡大（耳が少し切れてOK＝接近感）
+  if (a && a.ready) { g.drawImage(a.img, (W - bw) / 2 + jx, (H - bh) / 2 + jy, bw, bh); return; }
+  // 仮グリッチ（scare.png未着/404時のみ）。黒地＋低コントラストのグレー横ノイズ。
+  // ※高速フルスクリーン点滅は光過敏配慮で禁止（赤の明滅は廃止）。
+  g.save(); g.translate(jx, jy);
+  g.fillStyle = '#000'; g.fillRect(-12, -12, W + 24, H + 24);
+  for (let i = 0; i < 10; i++) {
+    const yy = ri(rand(-12, H + 12));
+    g.fillStyle = (i % 2) ? '#333' : '#1a1a1a';
+    g.fillRect(-12, yy, W + 24, ri(rand(2, 6)));
+  }
+  g.restore();
+}
+
+// ホラー用の黒ビネット（A前兆/D余韻で共用・最前面）
+function drawVignette(strength) {
+  if (strength <= 0) return;
+  const s = Math.min(1, strength);
+  const rg = g.createRadialGradient(W / 2, H / 2, H * 0.18, W / 2, H / 2, H * 0.62);
+  rg.addColorStop(0, 'rgba(0,0,0,' + (s * 0.3).toFixed(3) + ')'); // 中央も少し沈める＝照明が落ちる感
+  rg.addColorStop(1, 'rgba(0,0,0,' + s.toFixed(3) + ')');         // 縁が最も暗い＝視界が狭まる
+  g.fillStyle = rg; g.fillRect(0, 0, W, H);
+}
+
+// D 余韻：消えた直後に顔の残像が薄れる＋暗いビネットが残る
+function drawScareAfter() {
+  const k = game.scareAfter / CONFIG.SCARE_AFTER; // 1→0
+  const a = asset('scare.png');
+  if (a && a.ready) { g.save(); g.globalAlpha = 0.16 * k; g.drawImage(a.img, -12, -12, W + 24, H + 24); g.restore(); }
+  drawVignette(0.62 * k);
+}
+
 /* =====================================================================
    サウンド（Web Audio API で手続き生成。音声ファイル不要）
    ===================================================================== */
 const Sound = {
-  ctx: null, master: null, muted: false, bgmOn: false, bgmStep: 0, nextNoteTime: 0, unlocked: false,
+  ctx: null, master: null, muted: false, bgmOn: false, bgmStep: 0, nextNoteTime: 0, unlocked: false, scareBuf: null, scareBytes: null, scareTried: false, noiseBuf: null,
   init() { this.muted = lsGet(MUTED_KEY) === '1'; },
   ensure() {
     if (!this.ctx) {
@@ -294,11 +363,59 @@ const Sound = {
         this.unlocked = true;
       } catch (_) {}
     }
+    this.decodeScare(); // ctx確保後にドッキリSE(mp3)をデコード（一度だけ）
   },
-  setMuted(m) { this.muted = m; lsSet(MUTED_KEY, m ? '1' : '0'); if (this.master) this.master.gain.value = m ? 0 : 1; },
+  setMuted(m) { this.muted = m; lsSet(MUTED_KEY, m ? '1' : '0'); if (this.master) { try { this.master.gain.cancelScheduledValues(this.ctx ? this.ctx.currentTime : 0); } catch (_) {} this.master.gain.value = m ? 0 : 1; } }, // ramp中でも即反映
   toggleMute() { this.setMuted(!this.muted); },
   // 結果画面で止めたループBGMを再開（タイトル復帰/次ゲーム開始で使用）
   resumeBgm() { this.bgmOn = true; if (this.ctx) this.nextNoteTime = this.ctx.currentTime + 0.1; },
+  // ドッキリSE（バイオリン恐怖音 mp3・codex素材）。バイト先読み→ctx確保後デコード→bufferSourceで再生（master経由でミュート連動）。
+  preloadScare() {
+    if (this.scareBytes || this.scareBuf) return;
+    try { fetch('assets/scare_scream.mp3?v=' + ASSET_VER).then((r) => r.arrayBuffer()).then((b) => { this.scareBytes = b; this.decodeScare(); }).catch(() => {}); } catch (_) {}
+  },
+  decodeScare() {
+    if (this.scareBuf || this.scareTried || !this.scareBytes || !this.ctx) return;
+    this.scareTried = true; // 一度だけ試行（失敗してもensure毎に再デコードしない＝壊れmp3/404でのループ防止）
+    try { this.ctx.decodeAudioData(this.scareBytes.slice(0), (buf) => { this.scareBuf = buf; }, () => {}); } catch (_) {}
+  },
+  playScare() { // 再生できたら true（ミュート時/未デコード時は false → 合成へフォールバック）
+    this.ensure();
+    if (this.muted || !this.ctx || !this.scareBuf) return false;
+    try { const src = this.ctx.createBufferSource(); src.buffer = this.scareBuf; src.connect(this.master); src.start(); return true; } catch (_) { return false; }
+  },
+  scareDur() { return (this.scareBuf && this.scareBuf.duration) ? this.scareBuf.duration : CONFIG.SCARE_DURATION; },
+  // A 前兆：低音ランブル＋鼓動が速まる心音（合成・ミュート尊重）
+  startDread(dur) {
+    this.ensure(); if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime, d = dur || 1.0;
+    const o = this.ctx.createOscillator(), gn = this.ctx.createGain(); // 低音ランブル（ゆっくり膨らむ）
+    o.type = 'sine'; o.frequency.setValueAtTime(52, t); o.frequency.linearRampToValueAtTime(58, t + d);
+    gn.gain.setValueAtTime(0.0001, t);
+    gn.gain.exponentialRampToValueAtTime(0.16, t + d * 0.85);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.05);
+    o.connect(gn); gn.connect(this.master); o.start(t); o.stop(t + d + 0.1);
+    [0, 0.5, 0.8].forEach((off) => { this.note(62, t + off, 0.10, 'sine', 0.22); this.note(48, t + off + 0.06, 0.10, 'sine', 0.18); }); // 心音（間隔を詰めて速まる）
+  },
+  // C ヒット衝撃：サブベース＋ノイズburst（mp3に重ねる・ミュート尊重）
+  sfxImpact() {
+    this.ensure(); if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    this.note(55, t, 0.28, 'sine', 0.30); this.note(40, t, 0.30, 'sine', 0.20); // サブベース
+    try {
+      if (!this.noiseBuf) { const n = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * 0.2), this.ctx.sampleRate); const ch = n.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1; this.noiseBuf = n; }
+      const src = this.ctx.createBufferSource(), gn = this.ctx.createGain();
+      src.buffer = this.noiseBuf;
+      gn.gain.setValueAtTime(0.28, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      src.connect(gn); gn.connect(this.master); src.start(t); src.stop(t + 0.12);
+    } catch (_) {}
+  },
+  // D 余韻：BGM復帰を0.5秒フェードイン（!muted時のみ・終値は非ミュート既定の1.0）
+  bgmFadeIn() {
+    if (!this.ctx || this.muted || !this.master) return;
+    const t = this.ctx.currentTime;
+    try { this.master.gain.cancelScheduledValues(t); this.master.gain.setValueAtTime(0.45, t); this.master.gain.linearRampToValueAtTime(1, t + 0.5); } catch (_) {}
+  },
   note(freq, start, dur, type, vol) {
     if (!this.ctx || this.muted) return; // ミュート中はノードを作らない（無駄なCPU/GCを避ける）
     const o = this.ctx.createOscillator(), gain = this.ctx.createGain();
@@ -357,6 +474,21 @@ const Sound = {
   sfxTick(sec) { this.ensure(); if (!this.ctx || this.muted) return; const f = 440 + (6 - Math.min(6, sec)) * 70; this.note(f, this.ctx.currentTime, 0.07, 'square', 0.14); },
   // 残り10秒突入の合図
   sfxSpurt() { this.ensure(); if (!this.ctx || this.muted) return; const t = this.ctx.currentTime; [523, 660, 880].forEach((f, i) => this.note(f, t + i * 0.07, 0.16, 'square', 0.18)); },
+  // 「これはキツイ」ドッキリの絶叫風スクリーチ＋地鳴り（不協和を重ねて一気に来る恐怖）。ミュート尊重。
+  sfxScream() {
+    this.ensure(); if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const DUR = 1.8;                                                       // 約2秒の表示に合わせて長く尾を引く絶叫
+    this.sweep(1900, 200, DUR, 'sawtooth', 0.28);                         // 落ちていく絶叫
+    this.sweep(1500, 170, DUR, 'square',   0.20);
+    this.note(70, t, DUR, 'square', 0.26);                                // 地鳴り（低音）
+    this.note(54, t, DUR, 'sawtooth', 0.15);
+    this.note(2600, t, 0.2, 'sawtooth', 0.16);                            // 刺さる立ち上がり
+    for (let i = 0; i < 9; i++) {                                          // 不協和な束を波打たせて2秒間の持続感
+      const st = t + i * 0.18;
+      [300, 322, 348].forEach((f) => this.note(f * (1 + (i % 2) * 0.03), st, 0.22, 'sawtooth', 0.10));
+    }
+  },
   // 結果発表のファンファーレ。grand=true（ハイスコア更新）で長く豪華に。
   sfxResult(grand) {
     this.ensure(); if (!this.ctx) return;
@@ -402,6 +534,7 @@ const Sound = {
   },
 };
 Sound.init();
+Sound.preloadScare(); // ドッキリSE(mp3)のバイトを先読み（デコードはctx確保後）
 
 /* =====================================================================
    ゲーム状態
@@ -444,9 +577,20 @@ const game = {
   firstThrowDone: false,
   maskItem: null,           // 手元がお面ならその定義(MASKS.fox/tanuki)、ふだんは null
   maskUsedThisBowl: false,  // 1杯につきお面は最大1回
+  hard: false,              // 「これはキツイ」モードか
+  scareFired: false,        // このゲームでドッキリを発火済みか（1回限り）
+  scareActive: 0,           // ドッキリ全画面表示の残り秒（>0 の間 drawScare）
+  scareDisabled: false,     // この回はドッキリ画像を出さない（再戦モーダルで「出さない」選択時）
+  askScare: false,          // RESULTで「これはキツイ」再戦のドッキリ確認モーダル表示中か
+  scarePrepFired: false,    // タメ（前兆）を発火済みか（1回）
+  scarePrepActive: 0,       // タメの残り秒（>0でビネット濃く）
+  scareElapsed: 0,          // ヒット表示の経過秒（黒カット→ズーム制御）
+  scareAfter: 0,            // 余韻の残り秒（残像＋ビネット）
+  endTimer: 0,              // 終了の余韻（タイムアップ！表示）の残り秒。>0でRESULT移行待ち
 
   // オンライン全国ランキング
   lastScore: 0,                 // 直近ゲームの得点（=totalBowls）。endGameで確定し送信に使う
+  lastHard: false,              // 直近ゲームが「これはキツイ」だったか（ランキングの★区別用）
   myEntryId: null,              // 自分が登録した行のid（一覧で金ハイライトに使う）
   rankFrom: STATE.TITLE,        // ランキング画面から戻る先
   ranking: { phase: 'idle', rows: [], error: '' }, // phase: idle|loading|ok|error|unset
@@ -484,6 +628,8 @@ function resetBowl() {
   game.bowl.x = CONFIG.BOWL_X;
   game.bowl.y = CONFIG.BOWL_Y;
   game.driftPhase = 0; // 新しい丼はドリフトを中央（位相0）から開始
+  // 丼ごとに揺れの中心を左右どちらかへ寄せる（HARDで難化。DRIFT_BIAS_MAX=0なら中央のまま）
+  game.bowl.driftBias = CONFIG.DRIFT_BIAS_MAX > 0 ? (Math.random() < 0.5 ? -1 : 1) * CONFIG.DRIFT_BIAS_MAX : 0;
 }
 
 function setAim() {
@@ -497,11 +643,22 @@ function setAim() {
   game.flickSamples.length = 0;
 }
 
-function startGame(autoStarted) {
-  track('game_start', { auto: !!autoStarted }); // GA4: プレイ開始（auto=?play自動開始）
+function startGame(autoStarted, hard, noScare) {
+  game.hard = !!hard;
+  game.scareDisabled = !!noScare;               // 「これはキツイ」再戦で「出さない」を選んだ回はドッキリ無し
+  game.askScare = false;
+  applyDifficulty(game.hard);                   // CONFIG.GAME_TIME 等を使う前に適用（ノーマルは基準値へ復元）
+  track('game_start', { auto: !!autoStarted, hard: game.hard, no_scare: game.scareDisabled }); // GA4: プレイ開始（モードも記録）
   game.state = STATE.PLAY;
   game.timeLeft = CONFIG.GAME_TIME;
   game.lastSec = CONFIG.GAME_TIME;
+  game.scareFired = false;
+  game.scareActive = 0;
+  game.scarePrepFired = false;
+  game.scarePrepActive = 0;
+  game.scareElapsed = 0;
+  game.scareAfter = 0;
+  game.endTimer = 0;
   game.bowls = 0;
   game.bonusBowls = 0;
   game.elapsed = 0;
@@ -729,8 +886,20 @@ function onTanukiMissed(x, y) {
 
 function updatePlay(dt) {
   game.elapsed += dt;
-  game.timeLeft -= dt;
-  if (game.timeLeft <= 0) { game.timeLeft = 0; endGame(); return; }
+  // 終了の余韻：時間切れで即RESULTにせず「タイムアップ！」を少し見せてから結果へ
+  if (game.endTimer > 0) {
+    game.endTimer -= dt;
+    if (game.endTimer <= 0) endGame();
+    return;
+  }
+  if (game.scareActive <= 0) game.timeLeft -= dt; // ドッキリ表示中(操作不能の2秒)はタイマー停止＝機会損失なし
+  if (game.timeLeft <= 0) {
+    game.timeLeft = 0;
+    game.endTimer = CONFIG.ENDING_TIME;               // 余韻スタート（このあとendGameでRESULTへ）
+    game.dragging = false; game.dragPointerId = null; // 余韻中の入力固着を防止
+    Sound.sfxTimeup();                                // 終了音（結果のファンファーレは endGame 側）
+    return;
+  }
 
   // ラストスパート：残り10秒で突入アナウンス、残り1〜5秒はカウントダウン音（緊張ピーク）
   const sec = Math.ceil(game.timeLeft);
@@ -738,6 +907,34 @@ function updatePlay(dt) {
     game.lastSec = sec;
     if (sec === 10) { addToast('ラストスパート！', W / 2, 150, '#ff7a3a'); Sound.sfxSpurt(); }
     else if (sec >= 1 && sec <= 5) Sound.sfxTick(sec);
+  }
+
+  // A タメ（前兆）：ヒットの SCARE_PREP_LEAD 秒前にBGMを切って不穏に＋低音ランブル/心音
+  if (game.hard && !game.scareDisabled && !game.scarePrepFired &&
+      game.timeLeft <= CONFIG.SCARE_AT_TIMELEFT + CONFIG.SCARE_PREP_LEAD) {
+    game.scarePrepFired = true;
+    game.scarePrepActive = CONFIG.SCARE_PREP_LEAD;
+    Sound.startDread(CONFIG.SCARE_PREP_LEAD);  // ランブル＋心音（合成・ミュート尊重）。先に呼んでctx確保
+    Sound.bgmOn = false;                       // ↑ensureがbgmOn=trueにしても確実に切る（不穏な静けさ）
+  }
+
+  // 「これはキツイ」：残り固定秒で必ずドッキリ発火（1ゲーム1回）
+  if (game.hard && !game.scareDisabled && !game.scareFired && game.timeLeft <= CONFIG.SCARE_AT_TIMELEFT) {
+    game.scareFired = true;
+    game.scareElapsed = 0; game.scarePrepActive = 0; // B 黒カット→ズーム制御の起点／タメ終了
+    // 視界を奪う2秒：進行中のドラッグを中断（見えないまま誤って投げないように）
+    if (game.dragging) {
+      game.dragging = false; game.dragPointerId = null; game.flickSamples.length = 0;
+      game.food.x = CONFIG.ANCHOR_X; game.food.y = CONFIG.ANCHOR_Y;
+      game.pointer.x = CONFIG.ANCHOR_X; game.pointer.y = CONFIG.ANCHOR_Y;
+    }
+    const played = Sound.playScare();          // バイオリン恐怖音mp3を再生（ミュート尊重・master経由）
+    if (!played) Sound.sfxScream();            // フォールバック（合成。未デコード/ファイル無し/ミュート時）
+    Sound.sfxImpact();                         // C 冒頭にサブベース＋ノイズ衝撃を重ねる
+    Sound.bgmOn = false;                       // 音系のensure後に確実にBGMを切る（消えたら再開）
+    game.scareActive = Sound.scareDur();       // 画像表示は音の長さに同期（約2秒）
+    game.shake = Math.max(game.shake, 10);     // 画面を激しく揺らす
+    try { if (navigator.vibrate) navigator.vibrate([0, 400, 100, 400, 100, 400, 100, 400]); } catch (e) {} // スマホ振動（約2秒）
   }
 
   // 完成演出の保持 → 終わったら次の丼へ
@@ -755,7 +952,7 @@ function updatePlay(dt) {
     const amp = Math.min(CONFIG.DRIFT_AMP_MAX, (game.bowls - CONFIG.DRIFT_START_BOWL + 1) * CONFIG.DRIFT_AMP_PER_BOWL);
     const speed = Math.min(CONFIG.DRIFT_SPEED_MAX, CONFIG.DRIFT_SPEED_BASE + (game.bowls - CONFIG.DRIFT_START_BOWL) * CONFIG.DRIFT_SPEED_PER_BOWL);
     game.driftPhase += speed * dt;            // 位相を積算（速度を上げても位置が飛ばない）
-    b.x = CONFIG.BOWL_X + Math.sin(game.driftPhase) * amp;
+    b.x = clamp(CONFIG.BOWL_X + (game.bowl.driftBias || 0) + Math.sin(game.driftPhase) * amp, 34, 146);
   } else {
     b.x = CONFIG.BOWL_X;
   }
@@ -784,6 +981,7 @@ function updatePlay(dt) {
 
 function endGame() {
   game.state = STATE.RESULT;
+  game.dragging = false; game.dragPointerId = null; // 時間切れ時にフリック中でも掴み状態を解除（RESULTでボタン無反応になるバグ防止）
   game.newRecord = false;
   const z = totalBowls();
   if (z > game.hiscore) {
@@ -795,6 +993,7 @@ function endGame() {
 
   // ランキング登録用に得点を確定し、前回の送信/取得状態をリセット
   game.lastScore = z;
+  game.lastHard = game.hard;    // ランキングで「これはキツイ」記録として★区別するため確定
   game.myEntryId = null;
   game.ranking = { phase: 'idle', rows: [], error: '' };
   game.submit = { phase: 'idle', error: '' };
@@ -826,6 +1025,14 @@ function updateEffects(dt) {
   if (game.flash > 0) game.flash = Math.max(0, game.flash - dt * 3.2); // 完成ホールド(0.35s)内で消えるよう速め
   if (game.shake > 0) game.shake = Math.max(0, game.shake - dt * 16);
   if (game.inFlash > 0) game.inFlash = Math.max(0, game.inFlash - dt * 3);
+  if (game.scarePrepActive > 0) game.scarePrepActive = Math.max(0, game.scarePrepActive - dt); // A タメの減衰
+  if (game.scareActive > 0) {
+    game.scareElapsed += dt;
+    game.scareActive = Math.max(0, game.scareActive - dt);
+    if (game.scareActive === 0) { game.scareAfter = CONFIG.SCARE_AFTER; Sound.resumeBgm(); Sound.bgmFadeIn(); } // D 消えたら余韻へ＋BGMフェードイン
+  } else if (game.scareAfter > 0) {
+    game.scareAfter = Math.max(0, game.scareAfter - dt);
+  }
 }
 
 /* =====================================================================
@@ -837,7 +1044,8 @@ function updateEffects(dt) {
 // 見た目: 右マージン5px（遊び方の左マージンと一致）・高さ16px（遊び方/中心y10と一致）。
 function muteIconRect() { return { x: W - 23, y: 2, w: 18, h: 16 }; }
 function muteHitRect() { return { x: W - 34, y: 0, w: 34, h: 24 }; }
-function startRect() { return { x: W / 2 - 64, y: 222, w: 128, h: 40 }; }      // タイトル中央CTA（上げて下部に余白）
+function startRect() { return { x: W / 2 - 64, y: 202, w: 128, h: 40 }; }      // タイトル中央CTA（上げて下部に余白）
+function hardRect() { return { x: W / 2 - 74, y: 252, w: 148, h: 18 }; }        // タイトル：これはキツイでプレイ（HARD）
 function retryRect() { return { x: W / 2 - 66, y: 282, w: 132, h: 30 }; }      // 結果：もう一度（カード枠外。下に余白を確保）
 function rankingRect() { const w = navW('ランキング'); return { x: W / 2 - w / 2, y: 296, w: w, h: 16 }; } // タイトル最下部・中央
 function registerRect() { return { x: W / 2 - 64, y: 216, w: 128, h: 24 }; }   // 結果：ランキングに登録（カード内。上に間隔・下にハイスコア＋余白）
@@ -849,13 +1057,14 @@ function onDown(x, y, pid, t) {
   if (game.state === STATE.TITLE) {
     if (inRect(howtoRect(), x, y)) { try { window.location.href = 'howto.html'; } catch (e) {} return false; }
     if (inRect(rankingRect(), x, y)) { openRanking(STATE.TITLE); return false; }
+    if (CONFIG.HARD_ENABLED && inRect(hardRect(), x, y)) { startGame(false, true); return false; } // これはキツイ（高難度＋ドッキリ）
     if (inRect(startRect(), x, y)) startGame();
     return false; // ボタンの範囲だけで反応（誤動作防止）
   }
   if (game.state === STATE.RESULT) {
     if (inRect(backRect(), x, y)) { game.state = STATE.TITLE; game.elapsed = 0; Sound.resumeBgm(); return false; }
     if (inRect(registerRect(), x, y)) { onRegisterTap(); return false; }
-    if (inRect(retryRect(), x, y)) startGame();
+    if (inRect(retryRect(), x, y)) { if (game.lastHard) { openScareAsk(); } else { startGame(false, false); } return false; } // ハードはドッキリ確認モーダル、ノーマルは即再戦
     return false;
   }
   if (game.state === STATE.RANKING) {
@@ -864,7 +1073,7 @@ function onDown(x, y, pid, t) {
     rankDragging = true; rankLastY = y; rankDragPid = pid;
     return true;
   }
-  if (game.state === STATE.PLAY && game.phase === 'aim' && !game.dragging) {
+  if (game.state === STATE.PLAY && game.scareActive <= 0 && game.endTimer <= 0 && game.phase === 'aim' && !game.dragging) { // ドッキリ表示中(2秒)・終了余韻中は入力を無視
     game.dragging = true;
     game.dragPointerId = pid;
     game.flickSamples.length = 0;
@@ -890,7 +1099,9 @@ function onMove(x, y, pid, t) {
 }
 function onUp(pid, t) {
   if (game.state === STATE.RANKING && pid === rankDragPid) { rankDragging = false; return; }
-  if (game.state === STATE.PLAY && game.dragging && pid === game.dragPointerId) releaseFlick(t);
+  if (game.state === STATE.PLAY && game.dragging && pid === game.dragPointerId) { releaseFlick(t); return; }
+  // 念のため：PLAY以外でも掴んでいたポインタが離れたらドラッグ状態を確実に解除（無反応バグの保険）
+  if (game.dragging && pid === game.dragPointerId) { game.dragging = false; game.dragPointerId = null; }
 }
 // OS/ブラウザがポインタを奪った場合（着信・ジェスチャ割り込み等）は発射せずドラッグ中断
 function onCancel(pid) {
@@ -1287,6 +1498,57 @@ function drawNavButton(r, label, dir) {
   drawText(label, sx + aw + gap + tw / 2, cy, 9, '#ffe9a8', 'center', true);
 }
 
+// 「これはキツイ」モード入口。暗赤×黒の不穏なボタン＋▶矢印で“モードへ入る”合図。
+// 点滅(bright)はスタートボタンと同じタイミングを受け取り、赤の明暗で同期パルスさせる。
+function drawHardButton(r, bright) {
+  const rad = Math.min(7, r.h / 2);
+  g.save();
+  g.fillStyle = 'rgba(0,0,0,0.5)'; roundRectPath(r.x, r.y + 1, r.w, r.h, rad); g.fill();
+  const grad = g.createLinearGradient(0, r.y, 0, r.y + r.h);
+  grad.addColorStop(0, bright ? '#a81818' : '#5e0c0c'); grad.addColorStop(1, bright ? '#3a0808' : '#220404');
+  g.fillStyle = grad; roundRectPath(r.x, r.y, r.w, r.h, rad); g.fill();
+  g.strokeStyle = bright ? '#ff5a3a' : '#c22a1a'; g.lineWidth = 1.2; roundRectPath(r.x, r.y, r.w, r.h, rad); g.stroke();
+  g.restore();
+  // ▶矢印 + ラベル。長め文言は幅に収まるようフォントを自動縮小。矢印はcanvas描画（フォント非依存）。
+  const label = 'これはキツイでプレイ（HARD）';
+  const col = bright ? '#ffd9cf' : '#ff9a86';
+  const cy = r.y + r.h / 2;
+  const aw = 6, gap = 4;
+  let fs = 10;
+  g.font = '700 ' + fs + 'px ' + FONT_UI;
+  while (fs > 7.5 && (aw + gap + g.measureText(label).width) > r.w - 12) { fs -= 0.5; g.font = '700 ' + fs + 'px ' + FONT_UI; }
+  const tw = g.measureText(label).width;
+  const sx = Math.round(r.x + (r.w - (aw + gap + tw)) / 2);
+  g.fillStyle = col;
+  g.beginPath(); g.moveTo(sx, cy - 4); g.lineTo(sx, cy + 4); g.lineTo(sx + aw, cy); g.closePath(); g.fill();
+  drawText(label, sx + aw + gap + tw / 2, cy, fs, col, 'center', true);
+}
+
+// 小さな塗り★（フォント非依存・ランキングの「これはキツイ」記録マーカー）
+function drawStar(cx, cy, r, color) {
+  g.save();
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5;
+    const rad = (i % 2 === 0) ? r : r * 0.45;
+    const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+    i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+  }
+  g.closePath();
+  g.fillStyle = color; g.fill();
+  g.restore();
+}
+
+// ランキングの★凡例（ハードの記録が一覧にある時だけ表示）。赤★＋小さな説明文。
+function drawHardLegend(y) {
+  const label = 'これはキツイモードの記録';
+  g.font = '700 8px ' + FONT_UI;
+  const tw = g.measureText(label).width, gap = 4, sr = 3.5;
+  const sx = W / 2 - (sr * 2 + gap + tw) / 2;
+  drawStar(sx + sr, y, sr, '#ff5a3a');
+  drawText(label, sx + sr * 2 + gap + tw / 2, y, 8, '#ffb0a0', 'center', true);
+}
+
 // 結果画面のランク別ひとこと（最下部の意味不明な『岐阜・冷やしたぬきそば』を置換）
 function resultComment(n) {
   if (n >= 9) return 'お見事な職人技！';
@@ -1405,27 +1667,39 @@ function drawPlay() {
     g.restore();
   }
   if (game.flash > 0) { g.fillStyle = `rgba(255,255,255,${game.flash * 0.55})`; g.fillRect(0, 0, W, H); }
+  // 終了の余韻：「タイムアップ！」を少しポップさせて見せる（結果へ移る前のひと呼吸）
+  if (game.endTimer > 0) {
+    const e = CONFIG.ENDING_TIME - game.endTimer;              // 余韻の経過秒
+    const pop = 1 + 0.3 * Math.max(0, 1 - e / 0.18);           // 出だしだけ少し大きく
+    const fade = Math.min(1, game.endTimer / 0.25);            // 最後だけスッと薄く
+    g.fillStyle = 'rgba(0,0,0,0.34)'; g.fillRect(0, 0, W, H);
+    g.save(); g.globalAlpha = fade; g.translate(W / 2, H / 2 - 6); g.scale(pop, pop);
+    drawText('おしまい！', 0, 0, 24, '#ffd23f', 'center', true);
+    g.restore();
+  }
 }
 
 function drawTitle() {
   const logo = asset('title_logo.png');
   if (logo && logo.ready) {
-    g.drawImage(logo.img, ri(W / 2 - 80), 32, 160, 72);
+    g.drawImage(logo.img, ri(W / 2 - 80), 26, 160, 72);
   } else {
     // 習字風の2行タイトル「一分の / 冷やしたぬき」。
-    drawText('一分の', W / 2, 42, 20, '#fffef6', 'center', true, FONT_BRUSH);
-    drawText('冷やしたぬき', W / 2, 76, 24, '#fffef6', 'center', true, FONT_BRUSH);
+    drawText('一分の', W / 2, 36, 20, '#fffef6', 'center', true, FONT_BRUSH);
+    drawText('冷やしたぬき', W / 2, 70, 24, '#fffef6', 'center', true, FONT_BRUSH);
   }
-  drawSprite('bowl_done.png', W / 2, 162, CONFIG.BOWL_SIZE, CONFIG.BOWL_SIZE, () => {
+  drawSprite('bowl_done.png', W / 2, 146, CONFIG.BOWL_SIZE, CONFIG.BOWL_SIZE, () => {
     const sx = game.bowl.x, sy = game.bowl.y, sp = game.poured, sc = game.completing, ss = game.bowl.scale;
-    game.bowl.x = W / 2; game.bowl.y = 162; game.poured = INGREDIENTS.length; game.completing = true; game.bowl.scale = 1;
+    game.bowl.x = W / 2; game.bowl.y = 146; game.poured = INGREDIENTS.length; game.completing = true; game.bowl.scale = 1;
     drawBowl();
     game.bowl.x = sx; game.bowl.y = sy; game.poured = sp; game.completing = sc; game.bowl.scale = ss;
   });
 
-  drawStartButton(startRect(), Math.floor(game.elapsed * 2) % 2 === 0);
+  const blink = Math.floor(game.elapsed * 2) % 2 === 0; // 点滅タイミング（スタートとこれはキツイモードで共有）
+  drawStartButton(startRect(), blink);
+  if (CONFIG.HARD_ENABLED) drawHardButton(hardRect(), blink);
   // 下部：ハイスコア（情報）→ ランキング（導線）を余白を取って縦に並べる
-  drawText('ハイスコア  ' + game.hiscore + ' 杯', W / 2, 280, 11, '#fff', 'center', true);
+  drawText('ハイスコア  ' + game.hiscore + ' 杯', W / 2, 284, 11, '#fff', 'center', true);
   drawNavButton(rankingRect(), 'ランキング', 'right');
   drawNavButton(howtoRect(), 'あそびかた', 'right');
   drawMuteButton();
@@ -1551,6 +1825,15 @@ function drawResult() {
   drawMuteButton();
 }
 
+// 「これはキツイ」再戦時：ドッキリ画像 出す/出さない の確認。登録モーダルと同じDOM体裁(#scareModal)で統一。
+const scareModal = document.getElementById('scareModal');
+function openScareAsk() {
+  if (!scareModal) { startGame(false, true, false); return; } // 念のためのフォールバック
+  game.askScare = true;
+  scareModal.hidden = false;
+}
+function closeScareAsk() { game.askScare = false; if (scareModal) scareModal.hidden = true; }
+
 /* =====================================================================
    オンライン全国ランキング（Supabase REST / fetch のみ・外部ライブラリ不使用）
    config.js の window.RANKING を読む。未設定や通信失敗でもゲーム本体は壊さない。
@@ -1601,7 +1884,7 @@ function fetchTopScores() {
   const myReq = ++rankReqSeq;
   game.ranking = { phase: 'loading', rows: [], error: '' };
   const c = rankCfg();
-  const url = rankBase() + '?select=id,name,score,combo,created_at&order=score.desc,created_at.asc&limit=' + (c.topN || 20);
+  const url = rankBase() + '?select=*&order=score.desc,created_at.asc&limit=' + (c.topN || 20); // select=* で hard 列の有無に依存しない（マイグレ前でも読める）
   fetch(url, { headers: rankHeaders() })
     .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then((rows) => { if (myReq !== rankReqSeq) return; game.ranking = { phase: 'ok', rows: Array.isArray(rows) ? rows : [], error: '' }; })
@@ -1612,16 +1895,19 @@ function submitScore(name) {
   if (game.submit.phase === 'sending') return; // 送信中の二重登録を防止
   if (!rankingEnabled()) {
     // 未設定：保存はしないが、登録の流れをプレビュー（自分の行をサンプルに差し込み・ハイライト表示）
-    rankPreview = { id: -999, name: name, score: game.lastScore | 0, combo: game.maxCombo | 0, you: true };
+    rankPreview = { id: -999, name: name, score: game.lastScore | 0, combo: game.maxCombo | 0, you: true, hard: !!game.lastHard };
     game.submit = { phase: 'done', error: '' };
     openRanking(STATE.RESULT);
     return;
   }
   game.submit = { phase: 'sending', error: '' };
   track('ranking_register', { score: game.lastScore | 0, combo: game.maxCombo | 0 }); // GA4: ランキング登録（送信時。名前はPIIのため送らない）
-  const body = JSON.stringify({ name: name, score: game.lastScore | 0, combo: game.maxCombo | 0 });
-  fetch(rankBase(), { method: 'POST', headers: rankHeaders({ Prefer: 'return=representation' }), body })
-    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  const base = { name: name, score: game.lastScore | 0, combo: game.maxCombo | 0 };
+  const payload = game.lastHard ? Object.assign({}, base, { hard: true }) : base; // hardはハード時のみ
+  const post = (p) => fetch(rankBase(), { method: 'POST', headers: rankHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(p) })
+    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  post(payload)
+    .catch((e) => { if (payload.hard) return post(base); throw e; }) // hard列が無い等でPOST失敗→hard無しで再送（通常記録として救済）
     .then((rows) => {
       const row = (rows && rows[0]) || null;
       game.myEntryId = row ? row.id : null;
@@ -1669,6 +1955,13 @@ function confirmNameEntry() {
   if (cancel) cancel.addEventListener('click', closeNameEntry);
   if (nameInput) nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); confirmNameEntry(); } });
 })();
+(function wireScareAsk() {
+  const yes = document.getElementById('scareYes');
+  const no = document.getElementById('scareNo');
+  if (yes) yes.addEventListener('click', () => { closeScareAsk(); startGame(false, true, false); }); // 出す＝ドッキリあり
+  if (no) no.addEventListener('click', () => { closeScareAsk(); startGame(false, true, true); });    // 出さない＝ドッキリなし
+  if (scareModal) scareModal.addEventListener('click', (e) => { if (e.target === scareModal) closeScareAsk(); }); // 枠外タップで閉じる（結果へ戻る）
+})();
 
 // ランキング画面
 function drawRanking() {
@@ -1695,6 +1988,7 @@ function drawRanking() {
     drawText('いちばんに登録しよう！', W / 2, cardY + 136, 10, '#8ef0a0', 'center', false);
   } else if (rk.phase === 'ok') {
     if (rk.sample) { drawText('※ サンプル表示（未設定）', W / 2, cardY + 42, 9, '#ffb86a', 'center', false); rowsTopY = cardY + 60; }
+    else if (rk.rows.some((r) => r.hard)) { drawHardLegend(cardY + 42); rowsTopY = cardY + 58; } // ★の凡例（ハードの記録がある時のみ・リストを少し下げて重なり回避）
     // 縦スクロール：リスト領域でクリップし、可視行だけ描画（100位までドラッグ/ホイールで見られる）
     const rowH = 18;
     const listTop = rowsTopY - 10;          // クリップ上端
@@ -1714,6 +2008,8 @@ function drawRanking() {
       const row = rk.rows[i];
       const ry = rowsTopY + i * rowH - sc;   // baseline(middle)
       const mine = !!row.you || (game.myEntryId != null && row.id === game.myEntryId);
+      const isHard = !!row.hard;             // 「これはキツイ」の記録
+      if (isHard) { g.fillStyle = 'rgba(200,40,30,0.18)'; roundRectPath(cardX + 7, ry - 9, cardW - 20, rowH - 1, 4); g.fill(); } // 行をうっすら赤く
       if (mine) { g.fillStyle = 'rgba(255,210,90,0.18)'; roundRectPath(cardX + 7, ry - 9, cardW - 20, rowH - 1, 4); g.fill(); }
       const col = mine ? '#ffe9a8' : '#fff2c5';
       // 1〜3位は金・銀・銅のメダル円つきで特別扱い
@@ -1728,9 +2024,12 @@ function drawRanking() {
       }
       let nm = String(row.name || '？');
       g.font = '700 12px ' + FONT_UI;
-      while (nm.length > 1 && g.measureText(nm).width > nameMaxW) nm = nm.slice(0, -1);
+      const nmMax = isHard ? nameMaxW - 14 : nameMaxW;   // ★のぶん名前表示幅を少し詰める
+      while (nm.length > 1 && g.measureText(nm).width > nmMax) nm = nm.slice(0, -1);
       drawText(nm, cardX + 30, ry, 12, col, 'left', mine);
-      drawText((row.score | 0) + '杯', cardX + cardW - 16, ry, 12, col, 'right', true);
+      const scoreText = (row.score | 0) + '杯';
+      drawText(scoreText, cardX + cardW - 16, ry, 12, col, 'right', true);
+      if (isHard) { g.font = '700 12px ' + FONT_UI; const sw = g.measureText(scoreText).width; drawStar((cardX + cardW - 16) - sw - 7, ry, 4, '#ff5a3a'); } // 杯の左に赤い★
     }
     g.restore();
     // スクロールバー（右端）
@@ -1758,7 +2057,9 @@ function drawRanking() {
     const nm = lsGet(RANKING_NAME_KEY) || '—';
     const txt = myRank > 0 ? ('あなた  ' + myRank + '位  ' + nm + '  ' + game.lastScore + '杯')
                            : ('あなた  ' + nm + '  ' + game.lastScore + '杯');
-    drawText(txt, W / 2, cardY + cardH - 13, 10, '#ffd23f', 'center', true);
+    const fy = cardY + cardH - 13;
+    if (game.lastHard) { g.font = '700 10px ' + FONT_UI; const tw = g.measureText(txt).width; drawStar(W / 2 - tw / 2 - 8, fy, 4, '#ff5a3a'); } // 自分の記録にも★
+    drawText(txt, W / 2, fy, 10, '#ffd23f', 'center', true);
   }
 
   drawNavButton(backRectRanking(), 'もどる', 'left');
@@ -1793,6 +2094,10 @@ function frame(now) {
     else if (game.state === STATE.RESULT) drawResult();
     else drawRanking();
     g.restore();
+    // ホラー演出は shake変位の外側で最前面に描く（端漏れ防止）。前兆ビネット→ヒット→余韻。
+    if (game.scarePrepActive > 0) drawVignette(0.85 * (1 - game.scarePrepActive / CONFIG.SCARE_PREP_LEAD)); // A じわっと暗転
+    if (game.scareActive > 0) drawScare();                // B 黒カット→ズームパンチ
+    else if (game.scareAfter > 0) drawScareAfter();       // D 残像＋ビネット
 
     // --- 表示canvasへ一括拡大 ---
     present();

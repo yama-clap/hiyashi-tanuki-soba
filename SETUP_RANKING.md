@@ -19,6 +19,7 @@ create table if not exists public.scores (
   name        text   not null,
   score       int    not null,
   combo       int    not null default 0,
+  hard        boolean not null default false,   -- 「これはキツイ」モードの記録か（ランキングで★＋赤帯で区別）
   created_at  timestamptz not null default now()
 );
 
@@ -47,6 +48,11 @@ create policy "anon insert scores" on public.scores
 -- 公開キーでの改ざん・全削除を防ぐ）。「Automatically expose new tables」でこれらの権限が
 -- 付くことがあるため、明示的に revoke しておく。
 revoke update, delete, truncate on public.scores from anon, authenticated;
+
+-- 【既存DBに後から hard 列を足す場合のマイグレーション】
+-- すでに scores テーブルを作成済みなら、以下を1回だけ実行（後方互換・安全。既存行は false 扱い）。
+-- insert ポリシーは name/score/combo しか見ないため hard 追加で変更不要。boolean なので CHECK も不要。
+alter table public.scores add column if not exists hard boolean not null default false;
 
 -- （任意・さらに堅くするなら）created_at をクライアントから指定させない。
 -- 直POSTで created_at を操作され同点の並び順を弄られるのを防ぐトリガー：
