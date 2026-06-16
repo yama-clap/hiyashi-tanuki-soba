@@ -178,6 +178,19 @@ main {
 .hard .tease { color: #ffcaba; }
 .hard .caution { margin-top: 12px; font-size: 12px; font-weight: 700; color: #d8b9a8; line-height: 1.5; }
 
+/* ============ ご当地メモ（冷やしたぬき＝岐阜市のソウルフード） ============ */
+.local-note {
+  margin-top: 14px;
+  padding: 13px 16px;
+  border: 2px solid rgba(255, 236, 180, 0.34);
+  border-radius: 8px;
+  background: rgba(33, 20, 12, 0.88);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+.local-note p { margin: 0; color: #fff2c5; font-size: 14px; font-weight: 700; line-height: 1.55; text-shadow: 1px 1px 0 #201208; }
+.local-note .hi { color: #ffd23f; }
+
 /* ============ お面アイテム（読み合い）：たぬき=入れる(金) / きつね=よける(赤) ============ */
 .masks {
   margin-top: 16px;
