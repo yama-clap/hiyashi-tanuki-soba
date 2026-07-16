@@ -54,6 +54,12 @@ revoke update, delete, truncate on public.scores from anon, authenticated;
 -- insert ポリシーは name/score/combo しか見ないため hard 追加で変更不要。boolean なので CHECK も不要。
 alter table public.scores add column if not exists hard boolean not null default false;
 
+-- 【バージョン別ランキング（通常/天国 など）を分ける場合のマイグレーション】
+-- version 列で「通常版(normal)」と「冷やしたぬき天国版(tengoku)」の記録を分離する。
+-- 既存行は自動で 'normal' 扱い。送信時に version を付け、取得時に version=eq.<v> で絞る（コード対応済み）。
+-- insert ポリシーは version を見ないため変更不要（text なので CHECK も任意）。
+alter table public.scores add column if not exists version text not null default 'normal';
+
 -- （任意・さらに堅くするなら）created_at をクライアントから指定させない。
 -- 直POSTで created_at を操作され同点の並び順を弄られるのを防ぐトリガー：
 -- create function public.scores_force_now() returns trigger language plpgsql as $$
@@ -63,6 +69,46 @@ alter table public.scores add column if not exists hard boolean not null default
 ```
 
 > `score between 0 and 100` の上限は調整可。極端な値（9999等）の登録を弾くための上限です。
+
+### キープアライブ用テーブル（無料プランの自動停止対策・**必須**）
+
+無料プランは **7日間 DBアクティビティが無いと自動で一時停止**される。停止タイマーは
+「実際にPostgresに届くクエリ」でしかリセットされず、**単なる GET はAPIゲートウェイに
+キャッシュされて届かないためリセットされない**（実測で確認済み）。そこで GitHub Actions
+（`.github/workflows/supabase-keepalive.yml`）が2日ごとに、下記の専用テーブルへ **UPDATE(書き込み)**
+を行ってDBを起こし続ける。ランキングの `scores` は汚さない。以下を **SQL Editor で1回だけ実行**：
+
+```sql
+-- キープアライブ用の1行だけのテーブル
+create table if not exists public.keep_alive (
+  id       int primary key,
+  beat_at  timestamptz not null default now(),
+  nonce    uuid        not null default gen_random_uuid()
+);
+
+-- id=1 の初期行を必ず1つ作る（ワークフローはこの行を UPDATE する）
+insert into public.keep_alive (id, beat_at) values (1, now())
+  on conflict (id) do nothing;
+
+alter table public.keep_alive enable row level security;
+
+-- 匿名(publishable key)から id=1 の行の UPDATE のみ許可（=書き込みでDBを起こす）
+drop policy if exists "anon update keep_alive" on public.keep_alive;
+create policy "anon update keep_alive" on public.keep_alive
+  for update to anon using (id = 1) with check (id = 1);
+
+-- （任意）読み取りも許可
+drop policy if exists "anon read keep_alive" on public.keep_alive;
+create policy "anon read keep_alive" on public.keep_alive
+  for select to anon using (true);
+
+-- 必要な権限だけ付与。insert/delete/truncate は匿名から剥奪（1行を更新できるだけにする）
+grant select, update on public.keep_alive to anon;
+revoke insert, delete, truncate on public.keep_alive from anon, authenticated;
+```
+
+> 動作確認：GitHub の **Actions → Supabase keep-alive → Run workflow** を実行し、緑（HTTP 200・
+> `"beat_at"` が更新された行が返る）になればOK。プロジェクトが停止中／このテーブル未作成だと失敗する。
 
 ## 3. 接続情報を config.js に書く
 新しいSupabaseのキー画面に合わせた手順：
