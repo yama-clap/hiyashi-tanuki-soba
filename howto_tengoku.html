@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-N5T5V6X6');</script>
+  <!-- End Google Tag Manager -->
+  <!-- トップ(ゲーム)と同じ「固定横幅をスクリーンに合わせて表示」。レスポンシブにしない。 -->
+  <meta name="viewport" content="width=420">
+  <meta name="theme-color" content="#141016">
+  <title>あそびかた | 冷やしたぬき天国</title>
+  <link rel="icon" type="image/png" href="assets/bowl_tengoku.png">
+  <meta name="description" content="冷やしたぬき天国のあそびかた。岐阜の人気店をテーマに、フリックで具を上のどんぶりへ盛りつけ、60秒で何杯出せるか競うゲームです。">
+  <link rel="stylesheet" href="howto.css">
+  <style>
+    /* 天国版は背景を店舗(モダン)に差し替え（howto.cssは共有のためここで上書き） */
+    html {
+      background:
+        linear-gradient(rgba(20, 16, 22, 0.70), rgba(20, 16, 22, 0.92)),
+        url("assets/background_tengoku.png") center / cover fixed;
+    }
+  </style>
+</head>
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-N5T5V6X6"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+  <a class="nav-btn back" href="tengoku.html">トップへ</a>
+
+  <header class="page-head">
+    <img class="head-logo" src="assets/title_logo_tengoku_lockup.png" alt="一分の冷やしたぬき 天国版">
+    <h1>あそびかた</h1>
+    <p class="lead">60秒（1分）のタイムアタック！<br>冷やしたぬき天国を<br>何杯出せるか競うゲームです。</p>
+  </header>
+
+  <main>
+    <figure class="hero">
+      <img class="hero-bowl" src="assets/bowl_tengoku.png" alt="完成した冷やしたぬき天国">
+    </figure>
+
+    <section class="local-note" aria-label="店舗紹介">
+      <p>「冷やしたぬき天国」は <b class="hi">岐阜市の人気店</b>。このアプリは同店への<b>非公式ファンアプリ</b>で、店舗様とは関係ありません。</p>
+    </section>
+
+    <section class="steps" aria-label="基本のあそびかた">
+      <article class="step">
+        <div class="step-copy">
+          <span class="num">1</span>
+          <div>
+            <h2>上へシュッ</h2>
+            <p>具を上へすばやくフリック。</p>
+          </div>
+        </div>
+        <figure class="diagram flick-diagram" aria-label="上へフリックする図">
+          <img src="assets/tengoku_soba.png" alt="">
+          <span class="arrow-up"></span>
+          <span class="finger-dot"></span>
+        </figure>
+      </article>
+
+      <article class="step">
+        <div class="step-copy">
+          <span class="num">2</span>
+          <div>
+            <h2>どんぶりをねらう</h2>
+            <p>上のどんぶりに入れば成功！</p>
+          </div>
+        </div>
+        <figure class="diagram bowl-diagram" aria-label="どんぶりをねらう図">
+          <img src="assets/bowl_tengoku_empty.png" alt="">
+          <span class="target-line"></span>
+          <span class="target-label">ここ</span>
+        </figure>
+      </article>
+
+      <article class="step">
+        <div class="step-copy">
+          <span class="num">3</span>
+          <div>
+            <h2>外してもOK</h2>
+            <p>同じ具をもう一度なげられる。</p>
+          </div>
+        </div>
+        <figure class="diagram retry-diagram" aria-label="もう一度投げる図">
+          <img src="assets/tengoku_age.png" alt="">
+          <span class="retry-arrow">もう一回</span>
+        </figure>
+      </article>
+    </section>
+
+    <section class="order" aria-label="1杯ができるまで">
+      <h2>7つの具で、冷やしたぬき天国1杯</h2>
+      <div class="assembly-flow">
+        <ul class="foods">
+          <li><span class="food-img"><img src="assets/tengoku_soba.png" alt=""></span><span class="food-name">そば</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_tsuyu.png" alt=""></span><span class="food-name">つゆ</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_tenkasu.png" alt=""></span><span class="food-name">天かす</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_negi.png" alt=""></span><span class="food-name">ねぎ</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_age.png" alt=""></span><span class="food-name">あげ</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_goma.png" alt=""></span><span class="food-name">ごま</span></li>
+          <li><span class="food-img"><img src="assets/tengoku_kombu.png" alt=""></span><span class="food-name">昆布</span></li>
+        </ul>
+        <div class="merge-mark" aria-hidden="true">→</div>
+        <figure class="complete-figure">
+          <img src="assets/bowl_tengoku.png" alt="完成した冷やしたぬき天国">
+          <figcaption>完成！</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="masks" aria-label="お面アイテム">
+      <h2>ときどき「お面」が出る！</h2>
+      <p>プレイ中、まれに具のかわりに<b>お面</b>が出てくる。入れるか・よけるか、よく見てね！</p>
+      <div class="mask-cards">
+        <article class="mask-card good">
+          <span class="mask-img"><img src="assets/tanuki_mask.png" alt="たぬきのお面"></span>
+          <h3 class="hi">たぬきは入れて！</h3>
+          <p>どんぶりに入れると、<b class="hi">いっきに完成＋ボーナス1杯</b>の大当たり！</p>
+        </article>
+        <article class="mask-card bad">
+          <span class="mask-img"><img src="assets/kitsune_mask.png" alt="きつねのお面"></span>
+          <h3 class="warn">きつねはよけて！</h3>
+          <p>入れてしまうと<b class="warn">盛り直し</b>（その杯が最初から）。よけてやりすごそう。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="combo" aria-label="コンボボーナス">
+      <h2>コンボボーナス</h2>
+      <p>ミスせず続けて入れると<b>コンボ</b>！ <b>6回つづけて成功</b>するごとに<b class="hi">ボーナス +1杯</b>がついて、提供数がぐんぐん伸びる。つなぐほど高得点！</p>
+    </section>
+
+    <section class="rank-info" aria-label="職人ランク">
+      <h2>職人ランク</h2>
+      <p>その回の<b>提供数</b>で称号がきまるよ。たくさん出すほど上のランク！</p>
+      <ul class="rank-list">
+        <li>見習い（〜1杯）</li>
+        <li>かけだし（2〜3）</li>
+        <li>一人前（4〜5）</li>
+        <li>ベテラン（6〜8）</li>
+        <li>達人（9〜11）</li>
+        <li>名人（12〜15）</li>
+        <li class="rank-top"><b class="hi">伝説のたぬき（16杯〜）</b></li>
+      </ul>
+    </section>
+
+    <section class="ranking-info" aria-label="全国ランキング">
+      <h2>全国ランキング</h2>
+      <p>タイムアップのあと<b>「ランキングに登録」</b>で名前を入れると、提供数が<b class="hi">全国ランキング</b>にのる。みんなと「60秒で何杯出せるか」を競おう！</p>
+    </section>
+
+    <section class="hard" aria-label="これはキツイモード">
+      <h2 class="warn">もっと難しい「これはキツイ」</h2>
+      <p>タイトルの赤いボタン <b class="warn">これはキツイでプレイ（HARD）</b> から挑戦できる、腕に自信のある人向けモード。ルールも60秒も同じだけど、難しさが段ちがい。</p>
+      <ul>
+        <li>どんぶりが <b>小さく・速く・左右に逃げる</b></li>
+        <li>きつねのお面が <b>ちょっと多め</b> に出る</li>
+      </ul>
+      <p class="tease">そして…プレイ中、<b>何かが起きるかも？</b> 詳しくは、その目で。</p>
+      <p class="caution">このモードの記録は、全国ランキングで <b class="hi">★</b> つきで区別されます。</p>
+    </section>
+
+    <section class="tips" aria-label="コツ">
+      <h2>コツ</h2>
+      <ul>
+        <li>ゆっくりより、短くシュッと投げる。</li>
+        <li>横にズレたら、まっすぐ上をねらう。</li>
+        <li>きそうのは提供数（完成＋ボーナス）。1杯ずつ確実に！</li>
+        <li>音を消すときは、右上のスピーカーをタップ。</li>
+      </ul>
+    </section>
+
+    <section class="notice" aria-label="注意">
+      <h2>注意</h2>
+      <p>このアプリは個人制作の非公式ファンアプリ（ジョーク）です。「冷やしたぬき天国」の店舗様をはじめ、実在の店舗・企業・自治体・商品とは関係なく、タイアップでもありません。冷やしたぬき天国は本当においしいので、ぜひ現地で。</p>
+    </section>
+
+    <div class="actions" aria-label="ゲームへのリンク">
+      <a class="play-btn" href="tengoku.html?play=1">さっそくあそぶ</a>
+      <a class="nav-btn" href="tengoku.html">トップにもどる</a>
+    </div>
+  </main>
+</body>
+</html>
