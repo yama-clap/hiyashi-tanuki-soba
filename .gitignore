@@ -19,3 +19,8 @@ node_modules/
 
 # Supabaseからの移行時に取得したデータ控え（同じ165件は db/seed.sql にあるため重複）
 backup/
+
+# wrangler.toml はPagesのGitビルドでfunctions検出を阻害したためリポジトリ管理外にした
+# （D1バインディングはPagesプロジェクト設定側に保存済み）。ローカル開発用の控えのみ残す。
+wrangler.toml
+wrangler.toml.local
