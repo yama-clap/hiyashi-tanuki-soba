@@ -9,3 +9,13 @@ assets/_source/
 .codex/
 __pycache__/
 *.pyc
+
+# 手動バックアップ（game.js.bak-<sha> 等。ローカル控えなので公開・追跡しない）
+*.bak-*
+
+# Cloudflare/wrangler のローカル状態（ローカルD1のsqlite実体など。本番とは無関係）
+.wrangler/
+node_modules/
+
+# Supabaseからの移行時に取得したデータ控え（同じ165件は db/seed.sql にあるため重複）
+backup/

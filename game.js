@@ -103,15 +103,46 @@ const DIFFICULTY = {
 };
 function applyDifficulty(hard) { Object.assign(CONFIG, hard ? DIFFICULTY.hard : DIFFICULTY.normal); }
 
-// 盛り付け順: そば→つゆ→ねぎ→わさび→あげ→天かす（成功ごとに bowl_1..5 → bowl_done と段送り）
-const INGREDIENTS = [
-  { key: 'soba',    name: 'そば',   img: 'soba.png',    color: '#d8b878', edge: '#9c7b3e', size: CONFIG.FOOD_SIZE },
-  { key: 'tsuyu',   name: 'つゆ',   img: 'tsuyu.png',   color: '#6b502e', edge: '#3a2a14', size: CONFIG.FOOD_SIZE },
-  { key: 'negi',    name: 'ねぎ',   img: 'negi.png',    color: '#7ac84e', edge: '#3f8a26', size: CONFIG.FOOD_SIZE },
-  { key: 'wasabi',  name: 'わさび', img: 'wasabi.png',  color: '#46a13a', edge: '#256b1d', size: CONFIG.WASABI_SIZE },
-  { key: 'age',     name: 'あげ',   img: 'age.png',     color: '#e0a23e', edge: '#a66a18', size: CONFIG.FOOD_SIZE },
-  { key: 'tenkasu', name: '天かす', img: 'tenkasu.png', color: '#f0d27a', edge: '#bb9433', size: CONFIG.FOOD_SIZE },
-];
+// ===== バージョン定義（通常版=standard / 天国版=tengoku）。tengoku.html が window.GAME_VERSION='tengoku' を立てる。
+// game.js は1本を共有し、具材・丼/段画像・ロゴ・タイトル・あそびかた・ランキング種別を V で切替える。
+const GAME_VERSION = (typeof window !== 'undefined' && window.GAME_VERSION) || 'standard';
+const VERSIONS = {
+  standard: {
+    // 盛り付け順: そば→つゆ→ねぎ→わさび→あげ→天かす（bowl_1..5 → bowl_done と段送り）
+    ingredients: [
+      { key: 'soba',    name: 'そば',   img: 'soba.png',    color: '#d8b878', edge: '#9c7b3e', size: CONFIG.FOOD_SIZE },
+      { key: 'tsuyu',   name: 'つゆ',   img: 'tsuyu.png',   color: '#6b502e', edge: '#3a2a14', size: CONFIG.FOOD_SIZE },
+      { key: 'negi',    name: 'ねぎ',   img: 'negi.png',    color: '#7ac84e', edge: '#3f8a26', size: CONFIG.FOOD_SIZE },
+      { key: 'wasabi',  name: 'わさび', img: 'wasabi.png',  color: '#46a13a', edge: '#256b1d', size: CONFIG.WASABI_SIZE },
+      { key: 'age',     name: 'あげ',   img: 'age.png',     color: '#e0a23e', edge: '#a66a18', size: CONFIG.FOOD_SIZE },
+      { key: 'tenkasu', name: '天かす', img: 'tenkasu.png', color: '#f0d27a', edge: '#bb9433', size: CONFIG.FOOD_SIZE },
+    ],
+    bg: 'background.png', bowlEmpty: 'bowl_empty.png', bowlDone: 'bowl_done.png',
+    bowlStage: function (i) { return 'bowl_' + i + '.png'; },
+    logo: 'title_logo.png', titleLines: ['一分の', '冷やしたぬき'],
+    howto: 'howto.html', rankingVersion: 'normal',
+  },
+  tengoku: {
+    // 「冷やしたぬき天国」版。盛り付け順: そば→つゆ→天かす→ねぎ→あげ→ごま→昆布（7種で1杯）
+    ingredients: [
+      { key: 'soba',    name: 'そば',   img: 'tengoku_soba.png',    color: '#d8b878', edge: '#9c7b3e', size: CONFIG.FOOD_SIZE },
+      { key: 'tsuyu',   name: 'つゆ',   img: 'tengoku_tsuyu.png',   color: '#6b502e', edge: '#3a2a14', size: CONFIG.FOOD_SIZE },
+      { key: 'tenkasu', name: '天かす', img: 'tengoku_tenkasu.png', color: '#f0d27a', edge: '#bb9433', size: CONFIG.FOOD_SIZE },
+      { key: 'negi',    name: 'ねぎ',   img: 'tengoku_negi.png',    color: '#7ac84e', edge: '#3f8a26', size: CONFIG.FOOD_SIZE },
+      { key: 'age',     name: 'あげ',   img: 'tengoku_age.png',     color: '#e0a23e', edge: '#a66a18', size: CONFIG.FOOD_SIZE },
+      { key: 'goma',    name: 'ごま',   img: 'tengoku_goma.png',    color: '#caa24a', edge: '#7a5a20', size: CONFIG.FOOD_SIZE },
+      { key: 'kombu',   name: '昆布',   img: 'tengoku_kombu.png',   color: '#2f4a2a', edge: '#16240f', size: CONFIG.FOOD_SIZE },
+    ],
+    bg: 'background_tengoku.png', bowlEmpty: 'bowl_tengoku_empty.png', bowlDone: 'bowl_tengoku.png',
+    bowlStage: function (i) { return 'bowl_tengoku_' + i + '.png'; },
+    logo: 'title_logo_tengoku_lockup.png', titleLines: ['一分の', '冷やしたぬき'], // 「一分の」左寄せ＋右上に「天国」赤タグを組み込んだ一体ロゴ（160x72）
+    logoDY: 8, // 天国版のみロゴを少し下げる
+    howto: 'howto_tengoku.html', rankingVersion: 'tengoku',
+    titleAccent: 'bosatsu_tengoku.png', // タイトル右上の菩薩（来迎図）装飾。天国版のみ。
+  },
+};
+const V = VERSIONS[GAME_VERSION] || VERSIONS.standard;
+const INGREDIENTS = V.ingredients; // 具材数=INGREDIENTS.length 駆動で完成杯数/段数/HUDピップは自動対応
 
 // 狐＝悪(よけろ)／たぬき＝当たり(入れろ)。INGREDIENTS と同じ形＋ mask 種別。
 // ※ INGREDIENTS には入れない（6カウント完成ロジックに混ぜない）。手元へは game.maskItem で差し込む。
@@ -265,15 +296,18 @@ function loadImage(name, ver) {
 }
 function asset(name) { return ASSETS[name]; }
 
-loadImage('background.png');
-loadImage('bowl_empty.png');
-loadImage('bowl_done.png');
-for (let i = 1; i <= 5; i++) loadImage('bowl_' + i + '.png'); // 段階画像（無ければフォールバック）
-loadImage('title_logo.png');
+loadImage(V.bg);
+if (V.bg !== 'background.png') loadImage('background.png'); // バージョン背景が未着でも標準背景にフォールバックできるよう読む
+loadImage(V.bowlEmpty);
+loadImage(V.bowlDone);
+for (let i = 1; i < INGREDIENTS.length; i++) loadImage(V.bowlStage(i)); // 段数=具材数-1（無ければ盛り付けフォールバック）
+loadImage(V.logo);
+if (V.titleAccent) loadImage(V.titleAccent); // 菩薩などタイトル装飾（バージョン別・任意）
+if (V.titleStamp) loadImage(V.titleStamp);   // 「天国」バッジ（バージョン別・任意）
 INGREDIENTS.forEach((ing) => loadImage(ing.img));
-loadImage('kitsune_mask.png');
+loadImage('kitsune_mask.png'); // お面は両版共有
 loadImage('tanuki_mask.png');
-loadImage('scare.png', ASSET_VER); // 「これはキツイ」モードのドッキリ画像（codex作成。?v=でキャッシュ対策）
+loadImage('scare.png', ASSET_VER); // ドッキリ画像（両版共有・codex作成。?v=でキャッシュ対策）
 
 // ドットフォントの明示ロード。canvas の fillText は DOM と違いフォントロードを自動で
 // トリガーしないため、ここで読み込む。毎フレーム再描画なのでロード完了後は自動反映。
@@ -1055,7 +1089,7 @@ function onDown(x, y, pid, t) {
   Sound.ensure();
   if (inRect(muteHitRect(), x, y)) { Sound.toggleMute(); return false; }
   if (game.state === STATE.TITLE) {
-    if (inRect(howtoRect(), x, y)) { try { window.location.href = 'howto.html'; } catch (e) {} return false; }
+    if (inRect(howtoRect(), x, y)) { try { window.location.href = V.howto; } catch (e) {} return false; }
     if (inRect(rankingRect(), x, y)) { openRanking(STATE.TITLE); return false; }
     if (CONFIG.HARD_ENABLED && inRect(hardRect(), x, y)) { startGame(false, true); return false; } // これはキツイ（高難度＋ドッキリ）
     if (inRect(startRect(), x, y)) startGame();
@@ -1173,7 +1207,8 @@ function drawText(str, x, y, size, color, align, bold, family) {
 }
 
 function drawBackground() {
-  const a = asset('background.png');
+  let a = asset(V.bg);
+  if (!(a && a.ready)) a = asset('background.png'); // バージョン背景が未着なら標準背景にフォールバック
   if (a && a.ready) {
     // 背景は cover-fit。180×320ネイティブならそのまま等倍、サイズ違いでも中央合わせで対応。
     // （縮小が要る場合に備え、背景描画の間だけ平滑化を許可）
@@ -1242,9 +1277,9 @@ function drawIngredient(ing, cx, cy, scale) {
 
 // 丼（段階画像 bowl_empty→bowl_1..5→bowl_done。無ければ bowl_empty＋盛り描画でフォールバック）
 function bowlImageName() {
-  if (game.completing || game.poured >= INGREDIENTS.length) return 'bowl_done.png';
-  if (game.poured <= 0) return 'bowl_empty.png';
-  return 'bowl_' + game.poured + '.png';
+  if (game.completing || game.poured >= INGREDIENTS.length) return V.bowlDone;
+  if (game.poured <= 0) return V.bowlEmpty;
+  return V.bowlStage(game.poured);
 }
 function drawBowl() {
   const b = game.bowl, S = CONFIG.BOWL_SIZE * b.scale; // 杯数で縮む
@@ -1254,8 +1289,8 @@ function drawBowl() {
     g.drawImage(a.img, ri(b.x - S / 2), ri(b.y - S / 2), S, S);
     return;
   }
-  // フォールバック: bowl_empty（あれば）or 仮の丼
-  const be = asset('bowl_empty.png');
+  // フォールバック: 空の丼（あれば）or 仮の丼
+  const be = asset(V.bowlEmpty);
   if (be && be.ready) g.drawImage(be.img, ri(b.x - S / 2), ri(b.y - S / 2), S, S);
   else drawBowlFallbackShape(b.x, b.y, S);
   // 段階画像が無い時は盛った食材を小さく積んで進捗を見せる
@@ -1680,20 +1715,33 @@ function drawPlay() {
 }
 
 function drawTitle() {
-  const logo = asset('title_logo.png');
-  if (logo && logo.ready) {
-    g.drawImage(logo.img, ri(W / 2 - 80), 26, 160, 72);
-  } else {
-    // 習字風の2行タイトル「一分の / 冷やしたぬき」。
-    drawText('一分の', W / 2, 36, 20, '#fffef6', 'center', true, FONT_BRUSH);
-    drawText('冷やしたぬき', W / 2, 70, 24, '#fffef6', 'center', true, FONT_BRUSH);
+  // 天国版：右上に菩薩（来迎図）。高解像度元絵を縮小描画するので一時的にスムージングON。
+  if (V.titleAccent) {
+    const bo = asset(V.titleAccent);
+    if (bo && bo.ready) {
+      const bh = ri(H * 0.70), bw = ri(bh * bo.img.width / bo.img.height); // 画面縦の約70%。比率は画像から取得
+      const bottomY = ri(H * 0.60);          // 下端（肩のフェード）の位置。少し下げて顔を下に
+      const bx = ri(W - bw * 0.56);          // 右へずらす（右に約44%はみ出し）
+      g.imageSmoothingEnabled = true;
+      g.drawImage(bo.img, bx, bottomY - bh, bw, bh); // 上にもはみ出す（top<0）
+      g.imageSmoothingEnabled = false;
+    }
   }
-  drawSprite('bowl_done.png', W / 2, 146, CONFIG.BOWL_SIZE, CONFIG.BOWL_SIZE, () => {
+  // 丼を先に描き、その上にロゴ（焼き込みサブライン付きの場合があるので丼の前面に）。
+  drawSprite(V.bowlDone, W / 2, 146, CONFIG.BOWL_SIZE, CONFIG.BOWL_SIZE, () => {
     const sx = game.bowl.x, sy = game.bowl.y, sp = game.poured, sc = game.completing, ss = game.bowl.scale;
     game.bowl.x = W / 2; game.bowl.y = 146; game.poured = INGREDIENTS.length; game.completing = true; game.bowl.scale = 1;
     drawBowl();
     game.bowl.x = sx; game.bowl.y = sy; game.poured = sp; game.completing = sc; game.bowl.scale = ss;
   });
+  const logo = asset(V.logo);
+  if (logo && logo.ready) {
+    g.drawImage(logo.img, ri(W / 2 - 80), 26 + (V.logoDY || 0), 160, 72);
+  } else {
+    // ロゴ未配置時の習字風2行タイトル（バージョン別）。
+    drawText(V.titleLines[0], W / 2, 36, 20, '#fffef6', 'center', true, FONT_BRUSH);
+    drawText(V.titleLines[1], W / 2, 70, 24, '#fffef6', 'center', true, FONT_BRUSH);
+  }
 
   const blink = Math.floor(game.elapsed * 2) % 2 === 0; // 点滅タイミング（スタートとこれはキツイモードで共有）
   drawStartButton(startRect(), blink);
@@ -1757,7 +1805,7 @@ function drawResult() {
   cg.addColorStop(0, '#2b1b0e'); cg.addColorStop(1, '#1b1009');
   g.fillStyle = cg; roundRectPath(cardX, cardY, cardW, cardH, 12); g.fill();
   roundRectPath(cardX, cardY, cardW, cardH, 12); g.clip();
-  const bw = asset('bowl_done.png');
+  const bw = asset(V.bowlDone);
   if (bw && bw.ready) { g.globalAlpha = 0.06; g.drawImage(bw.img, ri(W / 2 - 58), 112, 116, 116); g.globalAlpha = 1; }
   g.restore();
   g.strokeStyle = '#caa24a'; g.lineWidth = 2; roundRectPath(cardX, cardY, cardW, cardH, 12); g.stroke();
@@ -1835,16 +1883,15 @@ function openScareAsk() {
 function closeScareAsk() { game.askScare = false; if (scareModal) scareModal.hidden = true; }
 
 /* =====================================================================
-   オンライン全国ランキング（Supabase REST / fetch のみ・外部ライブラリ不使用）
-   config.js の window.RANKING を読む。未設定や通信失敗でもゲーム本体は壊さない。
+   オンライン全国ランキング（Cloudflare D1 / 同一オリジンの /api/scores）
+   旧Supabase構成から移行。APIキーはブラウザに一切出さず、サーバ側の
+   functions/api/scores.js が検証とDBアクセスを担う。
+   通信失敗でもゲーム本体は壊さない。
    ===================================================================== */
 function rankCfg() { return window.RANKING || {}; }
-function rankingEnabled() { const c = rankCfg(); return !!(c.url && c.anonKey); }
-function rankBase() { const c = rankCfg(); return String(c.url).replace(/\/+$/, '') + '/rest/v1/' + (c.table || 'scores'); }
-function rankHeaders(extra) {
-  const c = rankCfg();
-  return Object.assign({ apikey: c.anonKey, Authorization: 'Bearer ' + c.anonKey, 'Content-Type': 'application/json' }, extra || {});
-}
+// 同一オリジンのAPIなので設定不要。file:// で直接開いた時だけサンプル表示にする。
+function rankingEnabled() { return /^https?:$/.test(location.protocol); }
+function rankBase() { return '/api/scores'; }
 
 // ランキング画面の縦スクロール状態（100位までドラッグ/ホイールで見る）。rankMaxScroll は描画側で更新。
 let rankScroll = 0, rankDragging = false, rankLastY = 0, rankDragPid = null, rankMaxScroll = 0;
@@ -1884,8 +1931,9 @@ function fetchTopScores() {
   const myReq = ++rankReqSeq;
   game.ranking = { phase: 'loading', rows: [], error: '' };
   const c = rankCfg();
-  const url = rankBase() + '?select=*&order=score.desc,created_at.asc&limit=' + (c.topN || 20); // select=* で hard 列の有無に依存しない（マイグレ前でも読める）
-  fetch(url, { headers: rankHeaders() })
+  // version で通常/天国を分離。並び替え(score降順・同点はcreated_at昇順)はサーバ側で行う。
+  const url = rankBase() + '?version=' + encodeURIComponent(V.rankingVersion) + '&limit=' + (c.topN || 500);
+  fetch(url)
     .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then((rows) => { if (myReq !== rankReqSeq) return; game.ranking = { phase: 'ok', rows: Array.isArray(rows) ? rows : [], error: '' }; })
     .catch((e) => { if (myReq !== rankReqSeq) return; game.ranking = { phase: 'error', rows: [], error: String((e && e.message) || e) }; });
@@ -1895,19 +1943,23 @@ function submitScore(name) {
   if (game.submit.phase === 'sending') return; // 送信中の二重登録を防止
   if (!rankingEnabled()) {
     // 未設定：保存はしないが、登録の流れをプレビュー（自分の行をサンプルに差し込み・ハイライト表示）
-    rankPreview = { id: -999, name: name, score: game.lastScore | 0, combo: game.maxCombo | 0, you: true, hard: !!game.lastHard };
+    rankPreview = { id: -999, name: name, score: game.lastScore | 0, combo: game.maxCombo | 0, you: true, hard: !!game.lastHard, version: V.rankingVersion };
     game.submit = { phase: 'done', error: '' };
     openRanking(STATE.RESULT);
     return;
   }
   game.submit = { phase: 'sending', error: '' };
   track('ranking_register', { score: game.lastScore | 0, combo: game.maxCombo | 0 }); // GA4: ランキング登録（送信時。名前はPIIのため送らない）
-  const base = { name: name, score: game.lastScore | 0, combo: game.maxCombo | 0 };
-  const payload = game.lastHard ? Object.assign({}, base, { hard: true }) : base; // hardはハード時のみ
-  const post = (p) => fetch(rankBase(), { method: 'POST', headers: rankHeaders({ Prefer: 'return=representation' }), body: JSON.stringify(p) })
-    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
-  post(payload)
-    .catch((e) => { if (payload.hard) return post(base); throw e; }) // hard列が無い等でPOST失敗→hard無しで再送（通常記録として救済）
+  // 自前APIは hard / version を常に受け付けるため、旧構成のような段階的リトライは不要。
+  const payload = {
+    name: name,
+    score: game.lastScore | 0,
+    combo: game.maxCombo | 0,
+    hard: !!game.lastHard,
+    version: V.rankingVersion, // 通常/天国を version で分離
+  };
+  fetch(rankBase(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then((rows) => {
       const row = (rows && rows[0]) || null;
       game.myEntryId = row ? row.id : null;
